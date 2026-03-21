@@ -3,10 +3,16 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "preinstall": "npx only-allow pnpm",
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck"
+  },
+  "engines": {
+    "npm": "please-use-pnpm",
+    "yarn": "please-use-pnpm",
+    "pnpm": ">=9.0.0"
   },
   "devDependencies": {
     "turbo": "^2.4.0",
