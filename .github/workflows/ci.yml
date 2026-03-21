@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test (convex-analytics)
+        run: pnpm --filter convex-analytics test
+        continue-on-error: false
+
+      - name: Test (convex-analytics-mcp)
+        run: pnpm --filter convex-analytics-mcp test
+
+      - name: Typecheck
+        run: pnpm --filter convex-analytics typecheck
+        continue-on-error: true
