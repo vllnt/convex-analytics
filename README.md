@@ -1,5 +1,9 @@
 # convex-analytics
 
+[![npm](https://img.shields.io/npm/v/convex-analytics)](https://www.npmjs.com/package/convex-analytics)
+[![CI](https://github.com/bntvllnt/convex-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/bntvllnt/convex-analytics/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Full-featured API-first analytics engine for [Convex](https://convex.dev). Reusable component — mount via `app.use()` in any Convex app.
 
 **Zero bundle size. Zero external services. AI-native via MCP.**
@@ -138,6 +142,20 @@ function initTest() {
   return t;
 }
 ```
+
+## Documentation
+
+Full documentation in [`docs/`](docs/):
+
+- [Quick Start](docs/quick-start.md) — install, mount, first event
+- [Client SDK](docs/client-sdk.md) — ConvexAnalytics<T> API
+- [Schema](docs/schema.md) — tables and indexes
+- [REST API](docs/api-reference.md) — all 24 endpoints
+- [Architecture](docs/architecture.md) — internals
+- [MCP Tools](docs/mcp-tools.md) — AI-native queries
+- [Multi-Product](docs/multi-product.md) — scoping
+
+For AI agents: [`llms.txt`](llms.txt) | [`llms-full.txt`](llms-full.txt)
 
 ## License
 

@@ -105,13 +105,13 @@ export class ConvexAnalytics<
       console.log("[convex-analytics] track", { name, userId, sessionId, properties, metadata });
     }
     const api = this.component as { track: { track: unknown } };
-    await ctx.runMutation(api.track.track as never, {
+    await ctx.runMutation(api.track.track as never, ({
       userId,
       sessionId,
       name,
       properties: properties ?? {},
       ...metadata,
-    });
+    }) as never);
   }
 
   async identify(
@@ -120,10 +120,10 @@ export class ConvexAnalytics<
     traits?: Record<string, unknown>,
   ): Promise<void> {
     const api = this.component as { track: { identify: unknown } };
-    await ctx.runMutation(api.track.identify as never, {
+    await ctx.runMutation(api.track.identify as never, ({
       userId,
       traits,
-    });
+    }) as never);
   }
 
   async alias(
@@ -132,10 +132,10 @@ export class ConvexAnalytics<
     identifiedId: string,
   ): Promise<void> {
     const api = this.component as { track: { alias: unknown } };
-    await ctx.runMutation(api.track.alias as never, {
+    await ctx.runMutation(api.track.alias as never, ({
       anonymousId,
       identifiedId,
-    });
+    }) as never);
   }
 
   async count(
@@ -144,11 +144,11 @@ export class ConvexAnalytics<
     opts?: QueryOpts,
   ): Promise<number> {
     const api = this.component as { queries: { count: unknown } };
-    return await ctx.runQuery(api.queries.count as never, {
+    return await ctx.runQuery(api.queries.count as never, ({
       name,
       from: opts?.from,
       to: opts?.to,
-    });
+    }) as never);
   }
 
   async list(
@@ -157,7 +157,7 @@ export class ConvexAnalytics<
     opts?: PaginationOpts,
   ): Promise<PaginatedResult<unknown>> {
     const api = this.component as { queries: { list: unknown } };
-    return await ctx.runQuery(api.queries.list as never, {
+    return await ctx.runQuery(api.queries.list as never, ({
       name,
       projectId: opts?.projectId,
       env: opts?.env,
@@ -166,7 +166,7 @@ export class ConvexAnalytics<
       to: opts?.to,
       limit: opts?.limit,
       cursor: opts?.cursor,
-    });
+    }) as never);
   }
 
   async summary(
@@ -174,8 +174,8 @@ export class ConvexAnalytics<
     opts?: { projectId?: string },
   ): Promise<SummaryItem[]> {
     const api = this.component as { queries: { summary: unknown } };
-    return await ctx.runQuery(api.queries.summary as never, {
+    return await ctx.runQuery(api.queries.summary as never, ({
       projectId: opts?.projectId,
-    });
+    }) as never);
   }
 }

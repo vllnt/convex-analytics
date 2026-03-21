@@ -1,5 +1,5 @@
 import { httpAction } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -474,7 +474,7 @@ export const deleteUserEndpoint = httpAction(async (ctx, request) => {
   const userId = params.get("id");
   if (!userId) return error("id parameter required");
 
-  await ctx.runMutation(api.crons.deleteUser as never, { userId } as never);
+  await ctx.runMutation(internal.crons.deleteUser as never, ({ userId }) as never);
   return json({ ok: true, deleted: userId });
 });
 
