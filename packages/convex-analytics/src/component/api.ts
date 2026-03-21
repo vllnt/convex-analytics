@@ -255,6 +255,229 @@ export const configPatchEndpoint = httpAction(async (ctx, request) => {
   return json({ ok: true });
 });
 
+// ─── Phase 2: Analytics Query Endpoints ───────────────────────────────────
+
+export const timeseriesEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const name = params.get("name");
+  if (!name) return error("name parameter required");
+  const interval = params.get("interval") ?? "day";
+  if (!["day", "week", "month"].includes(interval)) return error("interval must be day, week, or month");
+
+  const result = await ctx.runQuery(api.queries.timeseries as never, {
+    name,
+    interval,
+    projectId: params.get("projectId") ?? undefined,
+    env: params.get("env") ?? undefined,
+    from: params.get("from") ? Number(params.get("from")) : undefined,
+    to: params.get("to") ? Number(params.get("to")) : undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const funnelEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const stepsParam = params.get("steps");
+  if (!stepsParam) return error("steps parameter required (comma-separated)");
+  const steps = stepsParam.split(",").map((s) => s.trim());
+
+  const result = await ctx.runQuery(api.queries.funnel as never, {
+    steps,
+    window: params.get("window") ?? undefined,
+    from: params.get("from") ? Number(params.get("from")) : undefined,
+    to: params.get("to") ? Number(params.get("to")) : undefined,
+    projectId: params.get("projectId") ?? undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const retentionEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const event = params.get("event");
+  if (!event) return error("event parameter required");
+
+  const result = await ctx.runQuery(api.queries.retention as never, {
+    event,
+    period: params.get("period") ?? undefined,
+    cohorts: params.get("cohorts") ? Number(params.get("cohorts")) : undefined,
+    projectId: params.get("projectId") ?? undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const breakdownEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const name = params.get("name");
+  const dimension = params.get("dimension") ?? params.get("by");
+  if (!name) return error("name parameter required");
+  if (!dimension) return error("dimension (or by) parameter required");
+
+  const result = await ctx.runQuery(api.queries.breakdown as never, {
+    name,
+    dimension,
+    from: params.get("from") ? Number(params.get("from")) : undefined,
+    to: params.get("to") ? Number(params.get("to")) : undefined,
+    projectId: params.get("projectId") ?? undefined,
+    limit: params.get("limit") ? Number(params.get("limit")) : undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const attributionEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const conversionEvent = params.get("event") ?? params.get("conversion_event");
+  if (!conversionEvent) return error("event parameter required");
+
+  const result = await ctx.runQuery(api.queries.attribution as never, {
+    conversionEvent,
+    from: params.get("from") ? Number(params.get("from")) : undefined,
+    to: params.get("to") ? Number(params.get("to")) : undefined,
+    projectId: params.get("projectId") ?? undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const userEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const userId = params.get("id");
+  if (!userId) return error("id parameter required");
+
+  const result = await ctx.runQuery(api.queries.userTimeline as never, {
+    userId,
+    limit: params.get("limit") ? Number(params.get("limit")) : undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const sessionEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const sessionId = params.get("id");
+  if (!sessionId) return error("id parameter required");
+
+  const result = await ctx.runQuery(api.queries.sessionDetail as never, {
+    sessionId,
+  } as never);
+
+  return json(result);
+});
+
+export const liveEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const result = await ctx.runQuery(api.queries.live as never, {
+    limit: params.get("limit") ? Number(params.get("limit")) : undefined,
+    projectId: params.get("projectId") ?? undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const searchEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const q = params.get("q");
+  if (!q) return error("q parameter required");
+
+  const result = await ctx.runQuery(api.queries.search as never, {
+    query: q,
+    limit: params.get("limit") ? Number(params.get("limit")) : undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const uniquesEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const period = params.get("period") ?? "day";
+  if (!["day", "week", "month"].includes(period)) return error("period must be day, week, or month");
+
+  const result = await ctx.runQuery(api.queries.uniques as never, {
+    period,
+    from: params.get("from") ? Number(params.get("from")) : undefined,
+    to: params.get("to") ? Number(params.get("to")) : undefined,
+    projectId: params.get("projectId") ?? undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const lifecycleEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const result = await ctx.runQuery(api.queries.lifecycle as never, {
+    period: params.get("period") ?? undefined,
+    from: params.get("from") ? Number(params.get("from")) : undefined,
+    to: params.get("to") ? Number(params.get("to")) : undefined,
+    projectId: params.get("projectId") ?? undefined,
+  } as never);
+
+  return json(result);
+});
+
+export const stickinessEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const result = await ctx.runQuery(api.queries.stickiness as never, {
+    from: params.get("from") ? Number(params.get("from")) : undefined,
+    to: params.get("to") ? Number(params.get("to")) : undefined,
+    projectId: params.get("projectId") ?? undefined,
+  } as never);
+
+  return json(result);
+});
+
+// ─── Phase 3: GDPR Deletion Endpoint ─────────────────────────────────────
+
+export const deleteUserEndpoint = httpAction(async (ctx, request) => {
+  const authError = await requireApiKey(ctx, request);
+  if (authError) return authError;
+
+  const params = getSearchParams(request);
+  const userId = params.get("id");
+  if (!userId) return error("id parameter required");
+
+  await ctx.runMutation(api.crons.deleteUser as never, { userId } as never);
+  return json({ ok: true, deleted: userId });
+});
+
 function parseBrowser(ua: string): string {
   if (ua.includes("Firefox/")) return "Firefox";
   if (ua.includes("Edg/")) return "Edge";
