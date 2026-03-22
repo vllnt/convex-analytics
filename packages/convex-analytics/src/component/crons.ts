@@ -3,7 +3,7 @@ import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 
-const counter = new ShardedCounter(components.shardedCounter, {
+const counter = new ShardedCounter(components.shardedCounter as never, {
   defaultShards: 16,
 });
 

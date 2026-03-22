@@ -1,7 +1,7 @@
 {
   "name": "convex-analytics-mcp",
   "version": "0.1.0",
-  "description": "MCP server for convex-analytics — 16 tools for AI-native analytics",
+  "description": "MCP server for convex-analytics — 12 tools for AI-native analytics",
   "license": "MIT",
   "type": "module",
   "main": "./src/server.ts",
@@ -22,11 +22,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "convex": "^1.21.0",
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "convex": "^1.21.0"
   },
   "devDependencies": {
-    "vitest": "^3.0.0",
-    "typescript": "~5.7.0"
+    "@types/node": "^25.5.0",
+    "typescript": "~5.7.0",
+    "vitest": "^3.0.0"
   }
 }

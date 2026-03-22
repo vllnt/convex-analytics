@@ -1,0 +1,52 @@
+# convex-analytics
+
+> Full-featured API-first analytics engine for Convex. Reusable component — mount via `app.use()` in any Convex app. Zero bundle size. Zero external services. AI-native via MCP.
+
+## Docs
+
+- [Quick Start](docs/quick-start.md): Install, mount, track, query, MCP setup
+- [Client SDK](docs/client-sdk.md): ConvexAnalytics<T> class API, types, generics
+- [Database Schema](docs/schema.md): 7 tables, 20+ indexes, field reference
+- [REST API](docs/api-reference.md): 24 endpoints with params, auth, responses
+- [Architecture](docs/architecture.md): Write path, crons, child components, session lifecycle
+- [MCP Tools](docs/mcp-tools.md): 12 tools for AI-native analytics queries
+- [Multi-Product](docs/multi-product.md): projectId/env/platform scoping
+
+## API Quick Reference
+
+All endpoints require `x-api-key` header. Base: `https://your-deployment.convex.site/api/analytics`
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | /track | Ingest event |
+| GET | /events | List events |
+| GET | /count | Count events |
+| GET | /summary | All event counts |
+| GET | /timeseries | Time-series |
+| GET | /funnel | Funnel conversion |
+| GET | /retention | Cohort retention |
+| GET | /breakdown | Dimension breakdown |
+| GET | /attribution | Traffic sources |
+| GET | /uniques | DAU/WAU/MAU |
+| GET | /lifecycle | User classification |
+| GET | /stickiness | DAU/MAU ratio |
+| GET | /live | Real-time stream |
+| GET | /search | Event name search |
+| GET | /user | User timeline |
+| GET | /session | Session replay |
+| DELETE | /user | GDPR deletion |
+| POST | /alias | Merge users |
+| GET | /schemas | List schemas |
+| POST | /schemas | Create schema |
+| GET | /config | Get config |
+| PATCH | /config | Update config |
+
+## MCP Tools
+
+12 tools: get_timeseries, get_funnel, get_retention, get_breakdown, get_attribution, get_user_journey, get_session, get_live, compare_periods, get_stickiness, detect_anomalies, query_analytics
+
+## Optional
+
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [Security](SECURITY.md)
