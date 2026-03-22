@@ -6,11 +6,11 @@ import { ShardedCounter } from "@convex-dev/sharded-counter";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
 
 type AggregateType = { Key: string; Id: string; Namespace: string };
-const aggregate = new DirectAggregate<AggregateType>(components.aggregate);
-const counter = new ShardedCounter(components.shardedCounter, {
+const aggregate = new DirectAggregate<AggregateType>(components.aggregate as never);
+const counter = new ShardedCounter(components.shardedCounter as never, {
   defaultShards: 16,
 });
-const rateLimiter = new RateLimiter(components.rateLimiter, {
+const rateLimiter = new RateLimiter(components.rateLimiter as never, {
   trackEvent: {
     kind: "token bucket",
     rate: 100,

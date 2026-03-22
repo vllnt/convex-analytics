@@ -1,0 +1,1173 @@
+# convex-analytics — Full Documentation
+
+> This file contains the complete documentation for convex-analytics.
+> It is designed to be loaded into an LLM context window for comprehensive understanding.
+> Source of truth: docs/ directory. Update this file when docs/ changes.
+
+---
+
+# Quick Start
+
+Get analytics running in your Convex app in under 5 minutes.
+
+## 1. Install
+
+```bash
+npm install convex-analytics
+# or
+pnpm add convex-analytics
+# or
+yarn add convex-analytics
+```
+
+## 2. Mount the component
+
+In your `convex/convex.config.ts`:
+
+```typescript
+import { defineApp } from "convex/server";
+import analytics from "convex-analytics/convex.config";
+
+const app = defineApp();
+app.use(analytics);
+export default app;
+```
+
+## 3. Create a typed client
+
+```typescript
+import { ConvexAnalytics } from "convex-analytics";
+import { components } from "./_generated/api";
+
+// Untyped (zero friction) — accepts any event name and properties
+const analytics = new ConvexAnalytics(components.analytics);
+
+// Typed (compile-time safety) — enforces event names and property shapes
+type MyEvents = {
+  signup: { plan: "free" | "pro" };
+  page_view: { path: string };
+  purchase: { amount: number; currency: string };
+};
+const analytics = new ConvexAnalytics<MyEvents>(components.analytics);
+```
+
+See [Client SDK](./client-sdk.md) for the full API reference.
+
+## 4. Track your first event
+
+Inside a Convex mutation:
+
+```typescript
+await analytics.track(ctx, userId, sessionId, "signup", { plan: "pro" });
+```
+
+Event names must match `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`.
+
+## 5. Configure API keys for REST access
+
+Set API keys via the Convex dashboard environment variables, or programmatically in a mutation:
+
+```typescript
+// In a Convex mutation
+await ctx.db.insert("config", {
+  key: "api_keys",
+  value: JSON.stringify(["your-key"]),
+});
+```
+
+## 6. REST API first call
+
+```bash
+curl -H "x-api-key: your-key" \
+  https://your-deployment.convex.site/api/analytics/summary
+```
+
+The REST API exposes 24 routes. See the API reference for the full list.
+
+## 7. MCP setup for Claude Code
+
+```bash
+claude mcp add convex-analytics-mcp \
+  --env CONVEX_URL=https://your-deployment.convex.cloud \
+  --env ANALYTICS_API_KEY=your-key
+```
+
+This gives Claude Code 12 analytics tools via the MCP server.
+
+## 8. Testing with convex-test
+
+```typescript
+import analyticsTest from "convex-analytics/test";
+import { convexTest } from "convex-test";
+
+function initTest() {
+  const t = convexTest();
+  analyticsTest.register(t);
+  return t;
+}
+```
+
+## Next steps
+
+- [Client SDK](./client-sdk.md) -- full TypeScript API reference
+- `packages/convex-analytics/src/component/api.ts` -- REST endpoint source
+- `packages/convex-analytics-mcp/src/server.ts` -- MCP server source
+
+---
+
+# Client SDK
+
+TypeScript API reference for the `ConvexAnalytics<T>` class.
+
+Source: `packages/convex-analytics/src/client.ts`
+
+## Constructor
+
+```typescript
+new ConvexAnalytics(component: unknown, config?: ConvexAnalyticsConfig)
+```
+
+The `component` argument comes from `components.analytics` after mounting.
+
+### ConvexAnalyticsConfig
+
+```typescript
+interface ConvexAnalyticsConfig {
+  retentionDays?: number;
+  rateLimitPerMin?: number;
+  apiKeys?: string[];
+}
+```
+
+## Typed vs Untyped Usage
+
+**Untyped** -- accepts any event name and any properties object:
+
+```typescript
+const analytics = new ConvexAnalytics(components.analytics);
+await analytics.track(ctx, userId, sessionId, "anything", { any: "props" });
+```
+
+**Typed** -- compile-time enforcement of event names and property shapes:
+
+```typescript
+type MyEvents = {
+  signup: { plan: "free" | "pro" };
+  page_view: { path: string };
+  purchase: { amount: number; currency: string };
+};
+
+const analytics = new ConvexAnalytics<MyEvents>(components.analytics);
+
+// OK
+await analytics.track(ctx, userId, sessionId, "signup", { plan: "pro" });
+
+// Type error: "unknown_event" is not a key of MyEvents
+await analytics.track(ctx, userId, sessionId, "unknown_event", {});
+
+// Type error: plan must be "free" | "pro"
+await analytics.track(ctx, userId, sessionId, "signup", { plan: "enterprise" });
+```
+
+## Methods
+
+### track
+
+```typescript
+async track<K extends keyof TEvents & string>(
+  ctx: MutationCtx,
+  userId: string,
+  sessionId: string,
+  name: K,
+  properties?: TEvents[K],
+  metadata?: TrackMetadata,
+): Promise<void>
+```
+
+Core event ingestion. Writes an event record, updates the sharded counter, and manages session lifecycle.
+
+- `K` is constrained to event names in `TEvents` when typed.
+- `properties` are validated against `event_schemas` if a schema is registered for the event name. Unknown properties are silently dropped; type mismatches are silently dropped.
+- Event names must match `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`.
+- Rate-limited per sessionId (100/min, burst 10). Excess events are silently dropped.
+
+### identify
+
+```typescript
+async identify(
+  ctx: MutationCtx,
+  userId: string,
+  traits?: Record<string, unknown>,
+): Promise<void>
+```
+
+Update user profile traits (device, browser, os, locale, country, etc.). No-op if the userId does not exist yet.
+
+### alias
+
+```typescript
+async alias(
+  ctx: MutationCtx,
+  anonymousId: string,
+  identifiedId: string,
+): Promise<void>
+```
+
+Merge an anonymous user into an identified user:
+
+- Reassigns all events and sessions from `anonymousId` to `identifiedId` (paginated, 500/batch).
+- Merges user records: `firstSeen` takes min, `lastSeen` takes max, counts are summed.
+- Self-alias (same ID for both) is a no-op.
+
+### count
+
+```typescript
+async count(
+  ctx: QueryCtx,
+  name: keyof TEvents & string,
+  opts?: QueryOpts,
+): Promise<number>
+```
+
+Returns the event count for a given event name.
+
+- Without time bounds: uses the sharded counter (O(shards), not O(n)).
+- With `from`/`to`: uses daily rollups for the bounded range.
+
+### list
+
+```typescript
+async list(
+  ctx: QueryCtx,
+  name: keyof TEvents & string,
+  opts?: PaginationOpts,
+): Promise<PaginatedResult<unknown>>
+```
+
+Paginated event listing. Supports scoping by `projectId`, `env`, and `platform`.
+
+### summary
+
+```typescript
+async summary(
+  ctx: QueryCtx,
+  opts?: { projectId?: string },
+): Promise<SummaryItem[]>
+```
+
+Returns all event names with their counts, sorted descending. Optionally scoped to a `projectId`.
+
+### debug
+
+```typescript
+debug(enabled: boolean): void
+```
+
+Enable or disable console logging of `track()` calls. Useful during development.
+
+## Types
+
+### TrackMetadata
+
+All fields are optional.
+
+| Field | Type | Default |
+|-------|------|---------|
+| projectId | `string` | `"default"` |
+| env | `string` | `"default"` |
+| platform | `string` | `"default"` |
+| timestamp | `number` | `Date.now()` |
+| path | `string` | `"unknown"` |
+| locale | `string` | `"unknown"` |
+| referrer | `string` | `""` |
+| device | `string` | `"unknown"` |
+| browser | `string` | `"unknown"` |
+| os | `string` | `"unknown"` |
+| country | `string` | `"unknown"` |
+| region | `string \| null` | -- |
+| city | `string \| null` | -- |
+| utmSource | `string \| null` | -- |
+| utmMedium | `string \| null` | -- |
+| utmCampaign | `string \| null` | -- |
+
+### Dimension
+
+Union type used for breakdown queries:
+
+```typescript
+type Dimension =
+  | "locale" | "path" | "device" | "browser" | "os"
+  | "country" | "referrer" | "utmSource" | "utmMedium"
+  | "utmCampaign" | "projectId" | "env" | "platform";
+```
+
+### QueryOpts
+
+```typescript
+interface QueryOpts {
+  from?: number;    // epoch ms
+  to?: number;      // epoch ms
+  projectId?: string;
+  env?: string;
+  platform?: string;
+  compare?: "previous_period";
+}
+```
+
+### PaginationOpts
+
+```typescript
+interface PaginationOpts extends QueryOpts {
+  limit?: number;   // max 100, default 50
+  cursor?: string;
+}
+```
+
+### PaginatedResult
+
+```typescript
+interface PaginatedResult<T> {
+  data: T[];
+  hasMore: boolean;
+  cursor: string | null;
+}
+```
+
+### SummaryItem
+
+```typescript
+interface SummaryItem {
+  name: string;
+  count: number;
+}
+```
+
+---
+
+# Database Schema
+
+7 tables powering the analytics engine. Schema source of truth: `packages/convex-analytics/src/component/schema.ts`.
+
+---
+
+## events
+
+Core event storage. Every tracked interaction is one row.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| userId | string | Visitor identifier |
+| sessionId | string | Session identifier |
+| name | string | Event name (regex: `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`) |
+| projectId | string | Project scope (default: "default") |
+| env | string | Environment scope (default: "default") |
+| platform | string | Platform scope (default: "default") |
+| properties | any | Custom event properties (filtered by event_schemas if registered) |
+| timestamp | number | Epoch ms |
+| path | string | Page/screen path |
+| locale | string | User locale |
+| referrer | string | Traffic source |
+| device | string | Device type (desktop/mobile/tablet/bot) |
+| browser | string | Browser name (Chrome/Firefox/Safari/Edge/Other) |
+| os | string | Operating system |
+| country | string | Country code (auto-derived from headers) |
+| region | string? | Region (optional) |
+| city | string? | City (optional) |
+| utmSource | string? | UTM source |
+| utmMedium | string? | UTM medium |
+| utmCampaign | string? | UTM campaign |
+| seqNum | number | Event sequence number within session (derived from session.eventCount) |
+
+**Indexes** (12):
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| by_name_time | [name, timestamp] | Primary query path for most analytics |
+| by_user_time | [userId, timestamp] | User timeline, alias reassignment |
+| by_session | [sessionId, timestamp] | Session replay |
+| by_name_path | [name, path, timestamp] | Path breakdown |
+| by_name_locale | [name, locale, timestamp] | Locale breakdown |
+| by_name_device | [name, device, timestamp] | Device breakdown |
+| by_name_referrer | [name, referrer, timestamp] | Referrer breakdown |
+| by_name_country | [name, country, timestamp] | Country breakdown |
+| by_name_browser | [name, browser, timestamp] | Browser breakdown |
+| by_name_os | [name, os, timestamp] | OS breakdown |
+| by_project_name | [projectId, name, timestamp] | Multi-project queries |
+| by_project_env | [projectId, env, timestamp] | Env-scoped queries |
+
+---
+
+## sessions
+
+One row per session. Auto-created on first event for a sessionId. Closed by cron after 30min inactivity.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| userId | string | |
+| sessionId | string | |
+| projectId | string | |
+| env | string | |
+| platform | string | |
+| startTime | number | First event timestamp |
+| endTime | number? | Last activity timestamp (set by cron) |
+| eventCount | number | Total events in session |
+| entryPath | string | First page path |
+| exitPath | string | Last page path |
+| referrer | string | |
+| device | string | |
+| browser | string | |
+| os | string | |
+| locale | string | |
+| country | string | |
+| duration | number? | endTime - startTime (set by cron) |
+
+**Indexes** (3):
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| by_user | [userId, startTime] | User's session history |
+| by_time | [startTime] | Time-ordered session listing |
+| by_session | [sessionId] | Direct session lookup |
+
+---
+
+## users
+
+Aggregated user profile. Updated on each event. Stores latest device/browser/OS/locale/country.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| visitorId | string | Matches userId in events/sessions |
+| projectIds | string[] | All projects this user has events in |
+| firstSeen | number | Earliest event timestamp |
+| lastSeen | number | Latest event timestamp |
+| sessionCount | number | |
+| totalEvents | number | |
+| device | string | Latest device |
+| browser | string | Latest browser |
+| os | string | Latest OS |
+| locale | string | Latest locale |
+| country | string | Latest country |
+
+**Indexes** (3):
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| by_visitor | [visitorId] | Direct user lookup |
+| by_firstSeen | [firstSeen] | New user queries |
+| by_lastSeen | [lastSeen] | Active/dormant user queries |
+
+---
+
+## daily_rollups
+
+Pre-aggregated daily event counts with dimension breakdowns. Populated by cron every 5 minutes. Idempotent merge uses `Math.max` (safe to re-run).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| name | string | Event name |
+| projectId | string | |
+| env | string | |
+| date | string | YYYY-MM-DD |
+| count | number | Event count for this day |
+| uniqueUsers | number | Unique users for this day |
+| dimensions | any | Pre-aggregated breakdown: `{ locale: { "en": 5, "fr": 3 }, device: { "desktop": 6 }, ... }` |
+
+**Indexes** (3):
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| by_name_date | [name, date] | Event-specific date range queries |
+| by_project_date | [projectId, name, date] | Project-scoped rollup queries |
+| by_date | [date] | Date-ordered listing, TTL cleanup |
+
+---
+
+## event_schemas
+
+Property validation rules per event name. When a schema exists, `track()` silently drops unknown properties and type-mismatched values (intentional, not an error).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| name | string | Event name |
+| allowedProperties | any | `{ key: "string" | "number" | "boolean" }` -- property validation rules |
+
+**Indexes** (1):
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| by_name | [name] | Schema lookup during track() |
+
+---
+
+## config
+
+Key-value configuration store. Values are JSON-encoded strings.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| key | string | Config key |
+| value | string | JSON-encoded value |
+
+**Known keys:**
+
+| Key | Default | Mutable via API | Purpose |
+|-----|---------|-----------------|---------|
+| api_keys | -- | No | JSON array of API key strings |
+| retention_days | 90 | Yes | Days before TTL cleanup |
+| rate_limit | 100 | Yes | Events per minute per session |
+| session_timeout | 30 | Yes | Minutes of inactivity before session close |
+| alert_threshold | 8000 | Yes | Event count warning threshold |
+| emergency_cleanup | "false" | No | Halves retention when storage >90% |
+
+**Indexes** (1):
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| by_key | [key] | Direct config lookup |
+
+---
+
+## archives
+
+References to archived event data in Convex file storage. Created by TTL cleanup cron.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| date | string | Archive date |
+| fileId | Id<"_storage"> | Convex file storage reference |
+| eventCount | number | Events in archive |
+| sizeBytes | number | Archive file size |
+
+**Indexes** (1):
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| by_date | [date] | Date-ordered archive lookup |
+
+---
+
+# REST API Reference
+
+24 HTTP endpoints exposed via Convex `httpAction`. All require `x-api-key` header.
+
+Base URL: `https://your-deployment.convex.site/api/analytics`
+
+---
+
+## Authentication
+
+All endpoints require the `x-api-key` header. Keys are validated using timing-safe comparison against the `api_keys` config entry.
+
+| Status | Meaning |
+|--------|---------|
+| 401 | Missing header, no keys configured, or invalid key |
+
+---
+
+## Endpoints
+
+### POST /track
+
+Ingest an event. Auto-derives geo from Vercel/Cloudflare headers, device/browser/OS from User-Agent.
+
+**Body** (JSON):
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| userId | Yes | string | |
+| sessionId | Yes | string | |
+| name | Yes | string | Must match `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/` |
+| properties | No | object | Custom properties |
+| projectId | No | string | Default: "default" |
+| env | No | string | Default: "default" |
+| platform | No | string | Default: "default" |
+| timestamp | No | number | Epoch ms, default: now |
+| path | No | string | |
+| locale | No | string | |
+| referrer | No | string | |
+| device | No | string | Auto-derived from UA if omitted |
+| browser | No | string | Auto-derived from UA if omitted |
+| os | No | string | Auto-derived from UA if omitted |
+| country | No | string | Auto-derived from X-Vercel-IP-Country / CF-IPCountry |
+| region | No | string | Auto-derived from X-Vercel-IP-Country-Region |
+| city | No | string | Auto-derived from X-Vercel-IP-City |
+| utmSource | No | string | |
+| utmMedium | No | string | |
+| utmCampaign | No | string | |
+
+**Response**: `201 { "ok": true }`
+
+---
+
+### GET /events
+
+List events (paginated).
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| name | Yes | string | Event name |
+| projectId | No | string | |
+| env | No | string | |
+| platform | No | string | |
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+| limit | No | number | Max 100 |
+| cursor | No | string | Pagination cursor |
+
+**Response**: `{ data: Event[], hasMore: boolean }`
+
+---
+
+### GET /count
+
+Count events. Uses sharded counter for total count (O(shards)), daily_rollups for time-bounded.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| name | Yes | string | Event name |
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+
+**Response**: `{ name, count }`
+
+---
+
+### GET /summary
+
+All event names with counts, sorted descending.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| projectId | No | string | |
+
+**Response**: `[{ name, count }, ...]`
+
+---
+
+### GET /timeseries
+
+Time-series data bucketed by interval.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| name | Yes | string | Event name |
+| interval | No | string | day, week, or month (default: day) |
+| projectId | No | string | |
+| env | No | string | |
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+
+**Response**: `[{ date, count, uniques }, ...]`
+
+---
+
+### GET /funnel
+
+Funnel conversion analysis. Scans up to 10,000 first-step events.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| steps | Yes | string | Comma-separated event names |
+| window | No | string | Conversion window (default: "7d") |
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+| projectId | No | string | |
+
+**Response**: `[{ step, count, rate, dropoff }, ...]`
+
+---
+
+### GET /retention
+
+Cohort retention analysis.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| event | Yes | string | Event name |
+| period | No | string | day, week, or month (default: week) |
+| cohorts | No | number | Max 12 (default: 8) |
+| projectId | No | string | |
+
+**Response**: `{ cohorts: [{ period, date, size, retained: number[] }] }`
+
+---
+
+### GET /breakdown
+
+Dimension breakdown for an event.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| name | Yes | string | Event name |
+| dimension | Yes | string | One of: locale, country, device, browser, os, path, referrer, platform. Alias: `by` |
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+| projectId | No | string | |
+| limit | No | number | Max 100 |
+
+**Response**: `[{ value, count, percentage }, ...]`
+
+---
+
+### GET /attribution
+
+Traffic source attribution for a conversion event.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| event | Yes | string | Conversion event name. Alias: `conversion_event` |
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+| projectId | No | string | |
+
+**Response**: `[{ source, conversions, rate }, ...]`
+
+---
+
+### GET /uniques
+
+DAU/WAU/MAU active user counts.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| period | No | string | day, week, or month (default: day) |
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+| projectId | No | string | |
+
+**Response**: `{ dau, wau, mau, trend: [{ date, uniques }] }`
+
+---
+
+### GET /lifecycle
+
+User lifecycle classification (new, returning, dormant, resurrected).
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| period | No | string | day, week, or month |
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+| projectId | No | string | |
+
+**Response**: `{ new, returning, dormant, resurrected, total }`
+
+---
+
+### GET /stickiness
+
+DAU/MAU engagement ratio.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| from | No | number | Epoch ms |
+| to | No | number | Epoch ms |
+| projectId | No | string | |
+
+**Response**: `{ ratio, trend: [{ date, dau, mau, ratio }] }`
+
+---
+
+### GET /live
+
+Real-time recent events.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| limit | No | number | Max 200 (default: 50) |
+| projectId | No | string | |
+
+**Response**: `Event[]`
+
+---
+
+### GET /search
+
+Search event names by prefix.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| q | Yes | string | Search query |
+| limit | No | number | Max 100 |
+
+**Response**: `[{ name, count }, ...]`
+
+---
+
+### GET /user
+
+User profile with event and session timeline.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| id | Yes | string | User/visitor ID |
+| limit | No | number | Max 200 |
+
+**Response**: `{ user, events, sessions }`
+
+---
+
+### GET /session
+
+Session detail with ordered events.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| id | Yes | string | Session ID |
+
+**Response**: `{ session, events }` (events sorted by seqNum)
+
+---
+
+### DELETE /user
+
+GDPR deletion. Removes all events, sessions, and user record for the given ID.
+
+| Param | Required | Type | Description |
+|-------|----------|------|-------------|
+| id | Yes | string | User/visitor ID |
+
+**Response**: `{ ok: true, deleted: userId }`
+
+---
+
+### POST /alias
+
+Merge anonymous user into identified user. Paginated reassignment (500/batch) of events and sessions, then user record merge.
+
+**Body** (JSON):
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| anonymousId | Yes | string | Anonymous visitor ID |
+| identifiedId | Yes | string | Identified user ID |
+
+**Response**: `{ ok: true }`
+
+---
+
+### GET /schemas
+
+List all event schemas.
+
+**Response**: `[{ name, allowedProperties }, ...]`
+
+---
+
+### POST /schemas
+
+Create or update an event schema.
+
+**Body** (JSON):
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| name | Yes | string | Event name |
+| allowedProperties | Yes | object | `{ key: "string" | "number" | "boolean" }` |
+
+**Response**: `{ ok: true }`
+
+---
+
+### GET /config
+
+Get all config values. API keys are masked as `[N keys configured]`.
+
+**Response**: `{ key: value, ... }`
+
+---
+
+### PATCH /config
+
+Update mutable config values.
+
+**Body** (JSON): Object of key-value pairs. Only mutable keys accepted: `retention_days`, `rate_limit`, `session_timeout`, `alert_threshold`.
+
+**Response**: `{ ok: true }`
+
+---
+
+## Common Parameters
+
+All GET endpoints support these scoping parameters:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| projectId | string | Filter by project |
+| env | string | Filter by environment |
+| platform | string | Filter by platform |
+| from | number | Start of time range (epoch ms) |
+| to | number | End of time range (epoch ms) |
+
+## Error Format
+
+All errors return JSON: `{ "error": "message" }` with appropriate HTTP status code (400, 401).
+
+---
+
+# Architecture
+
+## Write Path
+
+Full `track()` flow:
+
+```
+track(ctx, userId, sessionId, name, properties, metadata)
+  |
+  +- 1. Rate limit (token bucket: 100/min per sessionId, burst 10)
+  |     +-- Exceeded? -> return null (silent drop, no error)
+  |
+  +- 2. Validate event name: /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
+  |     +-- Invalid? -> throw Error
+  |
+  +- 3. Filter properties against event_schemas (if registered)
+  |     +-- Unknown keys -> silently dropped
+  |     +-- Type mismatch -> silently dropped
+  |
+  +- 4. Upsert session (TOCTOU-safe: seqNum derived from eventCount)
+  |     +-- Existing -> patch eventCount++, exitPath, endTime
+  |     +-- New -> insert full session record
+  |
+  +- 5. Insert event (seqNum from step 4)
+  |
+  +- 6. Upsert user
+  |     +-- Existing -> patch lastSeen, totalEvents++, sessionCount, projectIds
+  |     +-- New -> insert with firstSeen = lastSeen = now
+  |
+  +- 7. Aggregate insert (namespace: "eventName:YYYY-MM-DD")
+  |     +-- DirectAggregate from @convex-dev/aggregate -- O(log n) counts
+  |
+  +- 8. Sharded counter increment
+        +-- ShardedCounter from @convex-dev/sharded-counter -- 16 shards
+```
+
+## Child Components
+
+| Component | Package | Purpose | Config |
+|-----------|---------|---------|--------|
+| aggregate | @convex-dev/aggregate | O(log n) date-range counts | Namespace: "eventName:YYYY-MM-DD" |
+| shardedCounter | @convex-dev/sharded-counter | High-throughput event counting | 16 shards |
+| rateLimiter | @convex-dev/rate-limiter | Per-session abuse prevention | 100/min, token bucket, burst 10 |
+
+Mounted in `convex.config.ts`:
+
+```typescript
+const component = defineComponent("analytics");
+component.use(aggregate);
+component.use(shardedCounter);
+component.use(rateLimiter);
+```
+
+## Session Lifecycle
+
+- Auto-created on first event per sessionId
+- seqNum derived from session.eventCount (TOCTOU-safe: session updated before event insert)
+- Closed by `closeInactiveSessions` cron after 30min of no events
+- Closing sets endTime and computes duration
+
+## Cron Jobs
+
+| Cron | Schedule | What it does |
+|------|----------|-------------|
+| rollup | Every 5 min | Scans last 10min of events, aggregates into daily_rollups with dimension breakdowns. Idempotent via Math.max merge (not +=). |
+| closeInactiveSessions | Every 5 min | Finds sessions with no events in 30min, sets endTime + duration. |
+| ttlCleanup | Daily | Deletes events older than retention_days (default 90). Emergency mode halves retention if storage >90%. Batched 500/delete, max 5000/run. |
+| monitor | Weekly | Logs storage usage (events, sessions, users). Warns if count > alert_threshold. |
+| rebalance | Weekly | Compares sharded counter vs actual event count per event name. Logs warning if drift >1%. |
+
+## Daily Rollups
+
+- Dimension breakdowns pre-computed: locale, device, country, browser, os, path, referrer, platform
+- Merge strategy: `Math.max` (not `+=`) -- safe to re-run, idempotent
+- Partitioned by: name + projectId + env + date
+
+## Alias (User Merge)
+
+1. Reassign all events from anonymousId to identifiedId (paginated 500/batch)
+2. Reassign all sessions from anonymousId to identifiedId (paginated 500/batch)
+3. If identifiedId user exists: merge records (min firstSeen, max lastSeen, sum counts, union projectIds), delete anonymous user record
+4. If identifiedId user doesn't exist: rename anonymous user's visitorId
+5. Self-alias (anonymousId === identifiedId) is a no-op
+
+## GDPR Deletion
+
+Cascading delete for a userId:
+
+1. Delete all events (batched 500/delete)
+2. Delete all sessions
+3. Delete user record
+
+---
+
+# MCP Tools
+
+## Setup
+
+```bash
+claude mcp add convex-analytics-mcp \
+  --env CONVEX_URL=https://your-deployment.convex.cloud \
+  --env ANALYTICS_API_KEY=your-key
+```
+
+Requires: CONVEX_URL and ANALYTICS_API_KEY environment variables.
+
+## Tools (12)
+
+### Structured Query Tools (9)
+
+**get_timeseries** -- Event counts over time
+- Input: `name` (required), `interval` (day|week|month), `from`, `to`, `projectId`
+- Output: Table of date, count, uniques
+- Example: "Show me page_view trends this month"
+
+**get_funnel** -- Conversion funnel analysis
+- Input: `steps` (required, string array), `window` (default "7d"), `projectId`
+- Output: Table of step, count, rate, dropoff
+- Example: "What's the conversion from page_view -> signup -> purchase?"
+
+**get_retention** -- Cohort retention analysis
+- Input: `event` (required), `period` (day|week|month), `cohorts` (max 12), `projectId`
+- Output: JSON with cohort periods and retention arrays
+- Example: "Show retention for signup events by week"
+
+**get_breakdown** -- Dimension breakdown
+- Input: `name` (required), `dimension` (required: locale|country|device|browser|os|path|referrer|platform), `projectId`
+- Output: Table of value, count, percentage
+- Example: "Break down page_view by country"
+
+**get_attribution** -- Traffic source attribution
+- Input: `conversion_event` (required), `projectId`
+- Output: Table of source, conversions, rate
+- Example: "Which sources drive the most signups?"
+
+**get_user_journey** -- Full user timeline
+- Input: `userId` (required), `limit`
+- Output: JSON with user profile, events, sessions
+- Example: "Show me user abc123's journey"
+
+**get_session** -- Session replay (ordered events)
+- Input: `sessionId` (required)
+- Output: JSON with session metadata and events sorted by seqNum
+
+**get_live** -- Real-time event stream
+- Input: `limit` (default 20), `projectId`
+- Output: Table of recent events (name, userId, path, country, device)
+
+**compare_periods** -- Period-over-period comparison
+- Input: `name` (required), `interval` (day|week|month), `projectId`
+- Output: Current count, previous count, % change
+
+### AI-Powered Tools (2)
+
+**detect_anomalies** -- Statistical anomaly detection
+- Input: `name` (optional, all events if omitted), `threshold` (z-score, default 2), `projectId`
+- Uses z-score analysis on daily timeseries
+- Flags days where counts deviate >threshold standard deviations from mean
+- Output: Table of anomalous dates with count, zscore, type (SPIKE|DROP)
+
+**get_stickiness** -- DAU/MAU engagement depth
+- Input: `projectId`
+- Output: Overall ratio + daily trend table
+
+### Natural Language Router (1)
+
+**query_analytics** -- Route natural language to structured queries
+- Input: `question` (required, plain English)
+- Keyword routing table:
+  - "funnel", "conversion" -> get_funnel
+  - "retention", "retain" -> get_retention
+  - "trending", "trend", "over time" -> get_timeseries
+  - "breakdown", "by country/device/locale" -> get_breakdown
+  - "live", "real-time", "recent" -> get_live
+  - "anomal", "unusual", "spike", "drop" -> detect_anomalies
+  - "stickiness", "dau", "engagement" -> get_stickiness
+  - "compare", "vs", "versus" -> compare_periods
+  - Default -> summary
+
+---
+
+# Multi-Product Scoping
+
+## Overview
+
+convex-analytics supports multi-product analytics via three scoping fields:
+
+| Field | Purpose | Default |
+|-------|---------|---------|
+| projectId | Separate products/apps | "default" |
+| env | Environments (production, staging, dev) | "default" |
+| platform | Platforms (web, ios, android) | "default" |
+
+## How Scoping Works
+
+### Track
+
+Pass scoping fields in `TrackMetadata`:
+
+```typescript
+await analytics.track(ctx, userId, sessionId, "signup", { plan: "pro" }, {
+  projectId: "my-saas",
+  env: "production",
+  platform: "web",
+});
+```
+
+Via REST:
+
+```bash
+curl -X POST -H "x-api-key: key" \
+  -d '{"userId":"u1","sessionId":"s1","name":"signup","projectId":"my-saas","env":"production","platform":"web"}' \
+  https://your.convex.site/api/analytics/track
+```
+
+Defaults: All three default to `"default"` if omitted.
+
+### Query
+
+All GET endpoints accept `?projectId=X&env=Y&platform=Z` as query parameters.
+
+When specified:
+- Events are filtered by the scoping fields
+- Rollups are partitioned by projectId + env
+- Sessions carry the scoping fields from their first event
+
+When omitted: returns data across all scopes.
+
+## Data Partitioning
+
+- **daily_rollups** are keyed by `name + projectId + env + date`
+- Each rollup row is scoped -- no cross-project contamination
+- `users.projectIds` is an array tracking all projects a user has events in
+
+## Use Cases
+
+**Multi-tenant SaaS**: Each customer gets a `projectId`. Dashboard shows per-customer analytics.
+
+```typescript
+// Track for customer A
+await analytics.track(ctx, userId, sessionId, "feature_used", {}, { projectId: "customer-a" });
+
+// Query for customer A only
+const events = await analytics.list(ctx, "feature_used", { projectId: "customer-a" });
+```
+
+**Staging vs Production**: Use `env` to separate test data.
+
+```typescript
+await analytics.track(ctx, userId, sessionId, "signup", {}, {
+  env: process.env.CONVEX_ENV === "production" ? "production" : "staging",
+});
+```
+
+**Web vs Mobile**: Use `platform` to compare platforms.
+
+```typescript
+// React web app
+await analytics.track(ctx, userId, sessionId, "page_view", {}, { platform: "web" });
+
+// React Native mobile app
+await analytics.track(ctx, userId, sessionId, "screen_view", {}, { platform: "ios" });
+```
+
+**Cross-project users**: A user who appears in multiple products has all projectIds in their `user.projectIds` array. The `alias()` function merges projectIds across user records.

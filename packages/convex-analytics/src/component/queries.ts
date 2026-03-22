@@ -3,7 +3,7 @@ import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 
-const counter = new ShardedCounter(components.shardedCounter, {
+const counter = new ShardedCounter(components.shardedCounter as never, {
   defaultShards: 16,
 });
 
@@ -558,7 +558,6 @@ export const uniques = query({
     const dau = days.length > 0 ? days.reduce((a, b) => a + b, 0) / days.length : 0;
 
     // WAU/MAU approximated from rollup data
-    const totalUniques = filtered.reduce((sum, r) => sum + r.uniqueUsers, 0);
     const dayCount = dailyUniques.size || 1;
     const wau = dau * Math.min(7, dayCount);
     const mau = dau * Math.min(30, dayCount);

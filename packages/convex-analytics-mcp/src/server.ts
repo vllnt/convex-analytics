@@ -2,7 +2,7 @@
 /**
  * convex-analytics-mcp — MCP server for convex-analytics
  *
- * 16 tools: 9 structured + 3 AI-powered + 4 utility
+ * 12 tools: 9 structured + 2 AI-powered + 1 NL router
  *
  * Usage:
  *   claude mcp add convex-analytics-mcp \
@@ -12,18 +12,20 @@
 
 import { ConvexHttpClient } from "convex/browser";
 
-const CONVEX_URL = process.env["CONVEX_URL"];
-const API_KEY = process.env["ANALYTICS_API_KEY"];
+const _CONVEX_URL = process.env["CONVEX_URL"];
+const _API_KEY = process.env["ANALYTICS_API_KEY"];
 
-if (!CONVEX_URL) {
+if (!_CONVEX_URL) {
   console.error("CONVEX_URL environment variable required");
   process.exit(1);
 }
-if (!API_KEY) {
+if (!_API_KEY) {
   console.error("ANALYTICS_API_KEY environment variable required");
   process.exit(1);
 }
 
+const CONVEX_URL: string = _CONVEX_URL;
+const API_KEY: string = _API_KEY;
 const BASE_URL = CONVEX_URL.replace(/\.convex\.cloud$/, ".convex.site");
 
 async function apiGet(path: string, params?: Record<string, string>): Promise<unknown> {
