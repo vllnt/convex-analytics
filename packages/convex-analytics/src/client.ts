@@ -1,4 +1,7 @@
 import type { GenericMutationCtx, GenericQueryCtx, GenericDataModel } from "convex/server";
+import { createConvexLogger } from "@vllnt/logger/convex";
+
+const logger = createConvexLogger("convex-analytics", "debug");
 
 export interface ConvexAnalyticsConfig {
   retentionDays?: number;
@@ -85,6 +88,7 @@ export class ConvexAnalytics<
   private component: unknown;
   private _debug = false;
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(component: unknown, _config?: ConvexAnalyticsConfig) {
     this.component = component;
   }
@@ -102,7 +106,7 @@ export class ConvexAnalytics<
     metadata?: TrackMetadata,
   ): Promise<void> {
     if (this._debug) {
-      console.log("[convex-analytics] track", { name, userId, sessionId, properties, metadata });
+      logger.debug("track", { name, userId, sessionId, properties, metadata });
     }
     const api = this.component as { track: { track: unknown } };
     await ctx.runMutation(api.track.track as never, ({

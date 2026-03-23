@@ -7,8 +7,8 @@ const componentMock = {
 };
 
 describe("ConvexAnalytics client", () => {
-  it("AC-15b: debug(true) logs track calls to console", async () => {
-    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+  it("AC-15b: debug(true) logs track calls via logger", async () => {
+    const spy = vi.spyOn(console, "debug").mockImplementation(() => {});
     const analytics = new ConvexAnalytics(componentMock);
     analytics.debug(true);
 
@@ -16,20 +16,17 @@ describe("ConvexAnalytics client", () => {
 
     await analytics.track(mockCtx as never, "u1", "s1", "signup", { plan: "pro" });
 
-    expect(spy).toHaveBeenCalledWith(
-      "[convex-analytics] track",
-      expect.objectContaining({
-        name: "signup",
-        userId: "u1",
-        sessionId: "s1",
-      }),
-    );
+    expect(spy).toHaveBeenCalled();
+    const loggedArg = spy.mock.calls[0]?.[0] as string;
+    expect(loggedArg).toContain("track");
+    expect(loggedArg).toContain("signup");
 
     spy.mockRestore();
   });
 
   it("AC-15c: debug(false) produces no console output", async () => {
-    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const analytics = new ConvexAnalytics(componentMock);
     analytics.debug(false);
 
@@ -37,8 +34,10 @@ describe("ConvexAnalytics client", () => {
 
     await analytics.track(mockCtx as never, "u1", "s1", "signup");
 
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
+    expect(debugSpy).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+    debugSpy.mockRestore();
+    logSpy.mockRestore();
   });
 
   it("AC-14f: untyped instance accepts any event name and properties", async () => {

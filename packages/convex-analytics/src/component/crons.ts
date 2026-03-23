@@ -2,6 +2,9 @@ import { internalMutation } from "./_generated/server";
 import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
+import { createConvexLogger } from "@vllnt/logger/convex";
+
+const logger = createConvexLogger("convex-analytics:crons");
 
 const counter = new ShardedCounter(components.shardedCounter as never, {
   defaultShards: 16,
@@ -172,7 +175,6 @@ export const ttlCleanup = internalMutation({
 
       const toDelete = oldEvents.filter((e) => e.timestamp < cutoff);
       if (toDelete.length === 0) {
-        hasMore = false;
         break;
       }
 
@@ -185,7 +187,7 @@ export const ttlCleanup = internalMutation({
     }
 
     if (deletedCount > 0) {
-      console.log(`[convex-analytics] TTL cleanup: deleted ${deletedCount} events older than ${effectiveRetention} days`);
+      logger.info("ttl-cleanup", { deletedCount, effectiveRetention });
     }
 
     return null;
@@ -213,13 +215,9 @@ export const monitor = internalMutation({
     const warningThreshold = thresholdConfig ? parseInt(thresholdConfig.value, 10) : 8000;
 
     if (eventCount >= warningThreshold) {
-      console.warn(
-        `[convex-analytics] Storage warning: ${eventCount}+ events, ${sessionCount}+ sessions, ${userCount}+ users. Consider reducing retention.`,
-      );
+      logger.warn("storage-warning", { eventCount, sessionCount, userCount });
     } else {
-      console.log(
-        `[convex-analytics] Monitor: ${eventCount} events, ${sessionCount} sessions, ${userCount} users. OK.`,
-      );
+      logger.info("monitor-ok", { eventCount, sessionCount, userCount });
     }
 
     return null;
@@ -248,9 +246,7 @@ export const rebalance = internalMutation({
       const driftPct = actualCount > 0 ? drift / actualCount : 0;
 
       if (driftPct > 0.01) {
-        console.warn(
-          `[convex-analytics] Counter drift: "${name}" counter=${counterCount} actual=${actualCount} drift=${(driftPct * 100).toFixed(1)}%`,
-        );
+        logger.warn("counter-drift", { name, counterCount, actualCount, driftPct });
       }
     }
 
@@ -295,7 +291,7 @@ export const deleteUser = internalMutation({
       await ctx.db.delete(user._id);
     }
 
-    console.log(`[convex-analytics] GDPR deletion complete for userId: ${args.userId}`);
+    logger.info("gdpr-deletion-complete", { userId: args.userId });
     return null;
   },
 });
