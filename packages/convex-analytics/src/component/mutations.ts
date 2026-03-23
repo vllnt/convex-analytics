@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { DirectAggregate } from "@convex-dev/aggregate";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
+import { propertiesValidator, traitsValidator, configEntriesValidator, allowedPropertiesValidator } from "./validators.js";
 
 type AggregateType = { Key: string; Id: string; Namespace: string };
 const aggregate = new DirectAggregate<AggregateType>(components.aggregate as never);
@@ -29,7 +30,7 @@ export const track = mutation({
     projectId: v.optional(v.string()),
     env: v.optional(v.string()),
     platform: v.optional(v.string()),
-    properties: v.optional(v.any()),
+    properties: v.optional(propertiesValidator),
     timestamp: v.optional(v.number()),
     path: v.optional(v.string()),
     locale: v.optional(v.string()),
@@ -220,7 +221,7 @@ export const track = mutation({
 export const identify = mutation({
   args: {
     userId: v.string(),
-    traits: v.optional(v.any()),
+    traits: v.optional(traitsValidator),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -269,42 +270,44 @@ export const alias = mutation({
     }
 
     // C5: Paginated reassignment instead of .collect()
-    // Reassign events in batches
-    let hasMoreEvents = true;
-    while (hasMoreEvents) {
-      const events = await ctx.db
+    async function fetchUserEvents(
+      batchCtx: typeof ctx,
+      userId: string,
+    ) {
+      return batchCtx.db
         .query("events")
-        .withIndex("by_user_time", (q) => q.eq("userId", args.anonymousId))
+        .withIndex("by_user_time", (q) => q.eq("userId", userId))
         .take(ALIAS_BATCH_SIZE);
-      if (events.length === 0) {
-        hasMoreEvents = false;
-      } else {
-        for (const event of events) {
-          await ctx.db.patch(event._id, { userId: args.identifiedId });
-        }
-        if (events.length < ALIAS_BATCH_SIZE) {
-          hasMoreEvents = false;
-        }
+    }
+
+    async function fetchUserSessions(
+      batchCtx: typeof ctx,
+      userId: string,
+    ) {
+      return batchCtx.db
+        .query("sessions")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(ALIAS_BATCH_SIZE);
+    }
+
+    // Reassign events in batches
+    let events = await fetchUserEvents(ctx, args.anonymousId);
+    while (events.length > 0) {
+      for (const event of events) {
+        await ctx.db.patch(event._id, { userId: args.identifiedId });
       }
+      if (events.length < ALIAS_BATCH_SIZE) break;
+      events = await fetchUserEvents(ctx, args.anonymousId);
     }
 
     // Reassign sessions in batches
-    let hasMoreSessions = true;
-    while (hasMoreSessions) {
-      const sessions = await ctx.db
-        .query("sessions")
-        .withIndex("by_user", (q) => q.eq("userId", args.anonymousId))
-        .take(ALIAS_BATCH_SIZE);
-      if (sessions.length === 0) {
-        hasMoreSessions = false;
-      } else {
-        for (const session of sessions) {
-          await ctx.db.patch(session._id, { userId: args.identifiedId });
-        }
-        if (sessions.length < ALIAS_BATCH_SIZE) {
-          hasMoreSessions = false;
-        }
+    let sessions = await fetchUserSessions(ctx, args.anonymousId);
+    while (sessions.length > 0) {
+      for (const session of sessions) {
+        await ctx.db.patch(session._id, { userId: args.identifiedId });
       }
+      if (sessions.length < ALIAS_BATCH_SIZE) break;
+      sessions = await fetchUserSessions(ctx, args.anonymousId);
     }
 
     // Merge user records
@@ -330,6 +333,106 @@ export const alias = mutation({
       });
     }
 
+    return null;
+  },
+});
+
+// ─── Config Mutations ────────────────────────────────────────────────────
+
+const MUTABLE_CONFIG_KEYS = new Set([
+  "retention_days",
+  "rate_limit",
+  "session_timeout",
+  "alert_threshold",
+]);
+
+export const configSet = mutation({
+  args: { key: v.string(), value: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("config")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, { value: args.value });
+    } else {
+      await ctx.db.insert("config", { key: args.key, value: args.value });
+    }
+    return null;
+  },
+});
+
+export const configSetMany = mutation({
+  args: { entries: configEntriesValidator },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const entries = args.entries as Record<string, string>;
+    const keys = Object.keys(entries);
+    for (const key of keys) {
+      if (!MUTABLE_CONFIG_KEYS.has(key)) {
+        throw new Error(`Config key '${key}' is not mutable`);
+      }
+    }
+
+    const existingConfigs = await Promise.all(
+      keys.map(async (key) => ({
+        key,
+        value: entries[key]!,
+        existing: await ctx.db
+          .query("config")
+          .withIndex("by_key", (q) => q.eq("key", key))
+          .unique(),
+      })),
+    );
+
+    for (const { key, value, existing } of existingConfigs) {
+      if (existing) {
+        await ctx.db.patch(existing._id, { value });
+      } else {
+        await ctx.db.insert("config", { key, value });
+      }
+    }
+    return null;
+  },
+});
+
+export const configUpsertSchema = mutation({
+  args: {
+    name: v.string(),
+    allowedProperties: allowedPropertiesValidator,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const props = args.allowedProperties;
+    if (typeof props !== "object" || props === null || Array.isArray(props)) {
+      throw new Error("allowedProperties must be an object { key: type }");
+    }
+    for (const [key, val] of Object.entries(props as Record<string, unknown>)) {
+      if (typeof key !== "string") {
+        throw new Error(`Property key must be a string, got ${typeof key}`);
+      }
+      if (val !== "string" && val !== "number" && val !== "boolean") {
+        throw new Error(
+          `Property '${key}' type must be 'string', 'number', or 'boolean', got '${String(val)}'`,
+        );
+      }
+    }
+
+    const existing = await ctx.db
+      .query("event_schemas")
+      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        allowedProperties: args.allowedProperties,
+      });
+    } else {
+      await ctx.db.insert("event_schemas", {
+        name: args.name,
+        allowedProperties: args.allowedProperties,
+      });
+    }
     return null;
   },
 });

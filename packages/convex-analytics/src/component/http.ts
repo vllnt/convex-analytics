@@ -29,7 +29,7 @@ async function requireApiKey(
   if (!key) {
     return error("Missing x-api-key header", 401);
   }
-  const config = await ctx.runQuery(api.config.get as never, { key: "api_keys" } as never);
+  const config = await ctx.runQuery(api.queries.configGet as never, { key: "api_keys" } as never);
   if (!config) {
     return error("API keys not configured", 401);
   }
@@ -72,7 +72,7 @@ export const trackEndpoint = httpAction(async (ctx, request) => {
 
   const ua = request.headers.get("User-Agent") ?? "";
 
-  await ctx.runMutation(api.track.track as never, {
+  await ctx.runMutation(api.mutations.track as never, {
     userId: String(body["userId"]),
     sessionId: String(body["sessionId"]),
     name,
@@ -169,7 +169,7 @@ export const aliasEndpoint = httpAction(async (ctx, request) => {
     return error("anonymousId and identifiedId are required");
   }
 
-  await ctx.runMutation(api.track.alias as never, {
+  await ctx.runMutation(api.mutations.alias as never, {
     anonymousId: String(body["anonymousId"]),
     identifiedId: String(body["identifiedId"]),
   } as never);
@@ -181,7 +181,7 @@ export const schemasGetEndpoint = httpAction(async (ctx, request) => {
   const authError = await requireApiKey(ctx, request);
   if (authError) return authError;
 
-  const schemas = await ctx.runQuery(api.config.listSchemas as never, {} as never);
+  const schemas = await ctx.runQuery(api.queries.configListSchemas as never, {} as never);
   return json(schemas);
 });
 
@@ -207,7 +207,7 @@ export const schemasPostEndpoint = httpAction(async (ctx, request) => {
     }
   }
 
-  await ctx.runMutation(api.config.upsertSchema as never, {
+  await ctx.runMutation(api.mutations.configUpsertSchema as never, {
     name: String(body["name"]),
     allowedProperties: props,
   } as never);
@@ -219,7 +219,7 @@ export const configGetEndpoint = httpAction(async (ctx, request) => {
   const authError = await requireApiKey(ctx, request);
   if (authError) return authError;
 
-  const config = await ctx.runQuery(api.config.getAll as never, {} as never) as Record<string, string>;
+  const config = await ctx.runQuery(api.queries.configGetAll as never, {} as never) as Record<string, string>;
   const safe = { ...config };
   if ("api_keys" in safe) {
     const count = JSON.parse(safe["api_keys"]!).length;
@@ -251,7 +251,7 @@ export const configPatchEndpoint = httpAction(async (ctx, request) => {
     filtered[key] = String(value);
   }
 
-  await ctx.runMutation(api.config.setMany as never, { entries: filtered } as never);
+  await ctx.runMutation(api.mutations.configSetMany as never, { entries: filtered } as never);
   return json({ ok: true });
 });
 
@@ -474,7 +474,7 @@ export const deleteUserEndpoint = httpAction(async (ctx, request) => {
   const userId = params.get("id");
   if (!userId) return error("id parameter required");
 
-  await ctx.runMutation(internal.crons.deleteUser as never, ({ userId }) as never);
+  await ctx.runMutation(internal.internal_mutations.deleteUser as never, ({ userId }) as never);
   return json({ ok: true, deleted: userId });
 });
 

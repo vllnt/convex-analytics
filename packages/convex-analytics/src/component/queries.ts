@@ -2,6 +2,7 @@ import { query } from "./_generated/server";
 import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
+import { anyResultValidator } from "./validators.js";
 
 const counter = new ShardedCounter(components.shardedCounter as never, {
   defaultShards: 16,
@@ -17,6 +18,7 @@ export const list = query({
     to: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
+  returns: anyResultValidator,
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 100);
 
@@ -63,6 +65,7 @@ export const count = query({
     from: v.optional(v.number()),
     to: v.optional(v.number()),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
     if (args.from !== undefined || args.to !== undefined) {
       // H2: Use daily_rollups for time-bounded count instead of .collect()
@@ -92,6 +95,7 @@ export const summary = query({
   args: {
     projectId: v.optional(v.string()),
   },
+  returns: v.array(v.object({ name: v.string(), count: v.number() })),
   handler: async (ctx, args) => {
     // H1: Get event names from event_schemas + daily_rollups (no raw event table scan)
     const schemas = await ctx.db.query("event_schemas").collect();
@@ -128,6 +132,7 @@ export const timeseries = query({
     from: v.optional(v.number()),
     to: v.optional(v.number()),
   },
+  returns: anyResultValidator,
   handler: async (ctx, args) => {
     const rollups = await ctx.db
       .query("daily_rollups")
@@ -186,6 +191,7 @@ export const funnel = query({
     to: v.optional(v.number()),
     projectId: v.optional(v.string()),
   },
+  returns: v.array(v.object({ step: v.string(), count: v.number(), rate: v.number(), dropoff: v.number() })),
   handler: async (ctx, args) => {
     if (args.steps.length < 2) {
       throw new Error("Funnel requires at least 2 steps");
@@ -227,22 +233,24 @@ export const funnel = query({
         continue;
       }
 
-      const qualifiedUsers = new Set<string>();
-      for (const userId of previousUsers) {
-        const events = await ctx.db
-          .query("events")
-          .withIndex("by_user_time", (q) =>
-            q.eq("userId", userId).gte("timestamp", from).lte("timestamp", to),
-          )
-          .take(1000);
+      const userEventResults = await Promise.all(
+        [...previousUsers].map(async (userId) => {
+          const events = await ctx.db
+            .query("events")
+            .withIndex("by_user_time", (q) =>
+              q.eq("userId", userId).gte("timestamp", from).lte("timestamp", to),
+            )
+            .take(1000);
 
-        const stepEvent = events.find(
-          (e) => e.name === stepName && e.timestamp <= from + windowMs,
-        );
-        if (stepEvent) {
-          qualifiedUsers.add(userId);
-        }
-      }
+          const stepEvent = events.find(
+            (e) => e.name === stepName && e.timestamp <= from + windowMs,
+          );
+          return { userId, qualified: !!stepEvent };
+        }),
+      );
+      const qualifiedUsers = new Set(
+        userEventResults.filter((r) => r.qualified).map((r) => r.userId),
+      );
 
       const prevCount = previousUsers.size;
       const currentCount = qualifiedUsers.size;
@@ -266,6 +274,7 @@ export const retention = query({
     cohorts: v.optional(v.number()),
     projectId: v.optional(v.string()),
   },
+  returns: anyResultValidator,
   handler: async (ctx, args) => {
     const period = args.period ?? "week";
     const cohortCount = Math.min(args.cohorts ?? 8, 12);
@@ -281,25 +290,32 @@ export const retention = query({
       retained: number[];
     }> = [];
 
-    for (let c = 0; c < cohortCount; c++) {
+    const cohortParams = Array.from({ length: cohortCount }, (_, c) => {
       const cohortStart = now - (cohortCount - c) * periodMs;
       const cohortEnd = cohortStart + periodMs;
       const cohortDate = new Date(cohortStart).toISOString().split("T")[0]!;
+      return { c, cohortStart, cohortEnd, cohortDate };
+    });
 
-      // Find users whose firstSeen is in this cohort period
-      const users = await ctx.db
-        .query("users")
-        .withIndex("by_firstSeen", (q) =>
-          q.gte("firstSeen", cohortStart).lte("firstSeen", cohortEnd),
-        )
-        .take(5000);
+    const cohortUserSets = await Promise.all(
+      cohortParams.map(async ({ cohortStart, cohortEnd }) => {
+        const users = await ctx.db
+          .query("users")
+          .withIndex("by_firstSeen", (q) =>
+            q.gte("firstSeen", cohortStart).lte("firstSeen", cohortEnd),
+          )
+          .take(5000);
+        return args.projectId
+          ? users.filter((u) => u.projectIds.includes(args.projectId!))
+          : users;
+      }),
+    );
 
-      const filteredUsers = args.projectId
-        ? users.filter((u) => u.projectIds.includes(args.projectId!))
-        : users;
+    for (let i = 0; i < cohortParams.length; i++) {
+      const { c, cohortStart, cohortDate } = cohortParams[i]!;
+      const filteredUsers = cohortUserSets[i]!;
       const cohortSize = filteredUsers.length;
 
-      // Check return in subsequent periods
       const retained: number[] = [];
       for (let p = 1; p <= cohortCount - c; p++) {
         const periodStart = cohortStart + p * periodMs;
@@ -330,6 +346,7 @@ export const breakdown = query({
     projectId: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
+  returns: v.array(v.object({ value: v.string(), count: v.number(), percentage: v.number() })),
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 20, 100);
 
@@ -380,6 +397,7 @@ export const attribution = query({
     to: v.optional(v.number()),
     projectId: v.optional(v.string()),
   },
+  returns: v.array(v.object({ source: v.string(), conversions: v.number(), rate: v.number() })),
   handler: async (ctx, args) => {
     const now = Date.now();
     const from = args.from ?? now - 30 * 86400000;
@@ -396,13 +414,18 @@ export const attribution = query({
     const convertedUserIds = [...new Set(conversionEvents.map((e) => e.userId))];
 
     // Get first session for each converting user (attribution source)
-    const sources = new Map<string, { conversions: number }>();
-    for (const userId of convertedUserIds) {
-      const firstSession = await ctx.db
-        .query("sessions")
-        .withIndex("by_user", (q) => q.eq("userId", userId))
-        .first();
+    const sessionResults = await Promise.all(
+      convertedUserIds.map(async (userId) => {
+        const firstSession = await ctx.db
+          .query("sessions")
+          .withIndex("by_user", (q) => q.eq("userId", userId))
+          .first();
+        return { userId, firstSession };
+      }),
+    );
 
+    const sources = new Map<string, { conversions: number }>();
+    for (const { firstSession } of sessionResults) {
       if (!firstSession) continue;
       if (args.projectId && firstSession.projectId !== args.projectId) continue;
 
@@ -428,6 +451,7 @@ export const userTimeline = query({
     userId: v.string(),
     limit: v.optional(v.number()),
   },
+  returns: anyResultValidator,
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 200);
 
@@ -456,6 +480,7 @@ export const sessionDetail = query({
   args: {
     sessionId: v.string(),
   },
+  returns: anyResultValidator,
   handler: async (ctx, args) => {
     const session = await ctx.db
       .query("sessions")
@@ -479,6 +504,7 @@ export const live = query({
     limit: v.optional(v.number()),
     projectId: v.optional(v.string()),
   },
+  returns: anyResultValidator,
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 200);
 
@@ -499,6 +525,7 @@ export const search = query({
     query: v.string(),
     limit: v.optional(v.number()),
   },
+  returns: v.array(v.object({ name: v.string(), count: v.number() })),
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 20, 100);
     const prefix = args.query.toLowerCase();
@@ -531,6 +558,7 @@ export const uniques = query({
     to: v.optional(v.number()),
     projectId: v.optional(v.string()),
   },
+  returns: anyResultValidator,
   handler: async (ctx, args) => {
     const now = Date.now();
     const to = args.to ?? now;
@@ -577,6 +605,7 @@ export const lifecycle = query({
     to: v.optional(v.number()),
     projectId: v.optional(v.string()),
   },
+  returns: v.object({ new: v.number(), returning: v.number(), dormant: v.number(), resurrected: v.number(), total: v.number() }),
   handler: async (ctx, args) => {
     const period = args.period ?? "week";
     const now = Date.now();
@@ -635,6 +664,7 @@ export const stickiness = query({
     to: v.optional(v.number()),
     projectId: v.optional(v.string()),
   },
+  returns: anyResultValidator,
   handler: async (ctx, args) => {
     const now = Date.now();
     const from = args.from ?? now - 30 * 86400000;
@@ -685,3 +715,43 @@ function parseWindow(window: string): number {
   if (unit === "m") return num * 60000;
   return 7 * 86400000;
 }
+
+// ─── Config Queries ──────────────────────────────────────────────────────
+
+export const configGet = query({
+  args: { key: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const entry = await ctx.db
+      .query("config")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .unique();
+    return entry?.value ?? null;
+  },
+});
+
+export const configGetAll = query({
+  args: {},
+  returns: anyResultValidator,
+  handler: async (ctx) => {
+    const entries = await ctx.db.query("config").collect();
+    const result: Record<string, string> = {};
+    for (const entry of entries) {
+      if (entry.key === "api_keys") {
+        const count = JSON.parse(entry.value).length;
+        result[entry.key] = `[${count} keys configured]`;
+      } else {
+        result[entry.key] = entry.value;
+      }
+    }
+    return result;
+  },
+});
+
+export const configListSchemas = query({
+  args: {},
+  returns: anyResultValidator,
+  handler: async (ctx) => {
+    return await ctx.db.query("event_schemas").collect();
+  },
+});
