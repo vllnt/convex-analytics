@@ -69,13 +69,13 @@ export const rollup = internalMutation({
       }
     }
 
+    const allRollups = await ctx.db.query("daily_rollups").withIndex("by_date").collect();
+    const rollupMap = new Map(
+      allRollups.map((r) => [`${r.projectId}:${r.name}:${r.date}`, r]),
+    );
+
     for (const [, g] of groups) {
-      const existing = await ctx.db
-        .query("daily_rollups")
-        .withIndex("by_project_date", (q) =>
-          q.eq("projectId", g.projectId).eq("name", g.name).eq("date", g.date),
-        )
-        .unique();
+      const existing = rollupMap.get(`${g.projectId}:${g.name}:${g.date}`);
 
       if (existing) {
         const mergedDims = {
@@ -121,15 +121,22 @@ export const closeInactiveSessions = internalMutation({
       .withIndex("by_time")
       .take(1000);
 
-    for (const session of activeSessions) {
-      if (session.endTime !== undefined && session.duration !== undefined) continue;
+    const sessionsToCheck = activeSessions.filter(
+      (s) => s.endTime === undefined || s.duration === undefined,
+    );
 
-      const lastEvent = await ctx.db
-        .query("events")
-        .withIndex("by_session", (q) => q.eq("sessionId", session.sessionId))
-        .order("desc")
-        .first();
+    const sessionLastEvents = await Promise.all(
+      sessionsToCheck.map(async (session) => ({
+        session,
+        lastEvent: await ctx.db
+          .query("events")
+          .withIndex("by_session", (q) => q.eq("sessionId", session.sessionId))
+          .order("desc")
+          .first(),
+      })),
+    );
 
+    for (const { session, lastEvent } of sessionLastEvents) {
       const lastActivity = lastEvent?.timestamp ?? session.startTime;
       if (lastActivity < thirtyMinAgo) {
         await ctx.db.patch(session._id, {
@@ -165,26 +172,29 @@ export const ttlCleanup = internalMutation({
 
     const cutoff = Date.now() - effectiveRetention * 86400000;
 
-    let deletedCount = 0;
-    let hasMore = true;
-    while (hasMore && deletedCount < 5000) {
-      const oldEvents = await ctx.db
+    async function deleteBatch(
+      batchCtx: typeof ctx,
+      batchCutoff: number,
+      deletedSoFar: number,
+    ): Promise<number> {
+      const oldEvents = await batchCtx.db
         .query("events")
         .order("asc")
         .take(BATCH_SIZE);
 
-      const toDelete = oldEvents.filter((e) => e.timestamp < cutoff);
-      if (toDelete.length === 0) {
-        break;
-      }
+      const toDelete = oldEvents.filter((e) => e.timestamp < batchCutoff);
+      if (toDelete.length === 0) return deletedSoFar;
 
       for (const event of toDelete) {
-        await ctx.db.delete(event._id);
-        deletedCount++;
+        await batchCtx.db.delete(event._id);
       }
 
-      if (toDelete.length < BATCH_SIZE) hasMore = false;
+      const newTotal = deletedSoFar + toDelete.length;
+      if (newTotal >= 5000 || toDelete.length < BATCH_SIZE) return newTotal;
+      return deleteBatch(batchCtx, batchCutoff, newTotal);
     }
+
+    const deletedCount = await deleteBatch(ctx, cutoff, 0);
 
     if (deletedCount > 0) {
       logger.info("ttl-cleanup", { deletedCount, effectiveRetention });
@@ -232,14 +242,18 @@ export const rebalance = internalMutation({
     const schemas = await ctx.db.query("event_schemas").collect();
     const names = schemas.map((s) => s.name).slice(0, 10);
 
-    for (const name of names) {
-      const counterCount = await counter.count(ctx, name);
-      const actualEvents = await ctx.db
-        .query("events")
-        .withIndex("by_name_time", (q) => q.eq("name", name))
-        .take(10001);
+    const rebalanceResults = await Promise.all(
+      names.map(async (name) => {
+        const counterCount = await counter.count(ctx, name);
+        const actualEvents = await ctx.db
+          .query("events")
+          .withIndex("by_name_time", (q) => q.eq("name", name))
+          .take(10001);
+        return { name, counterCount, actualCount: actualEvents.length };
+      }),
+    );
 
-      const actualCount = actualEvents.length;
+    for (const { name, counterCount, actualCount } of rebalanceResults) {
       if (actualCount >= 10001) continue;
 
       const drift = Math.abs(counterCount - actualCount);
@@ -259,20 +273,23 @@ export const deleteUser = internalMutation({
   args: { userId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    let hasMore = true;
-    while (hasMore) {
-      const events = await ctx.db
+    async function fetchEventBatch(
+      batchCtx: typeof ctx,
+      userId: string,
+    ) {
+      return batchCtx.db
         .query("events")
-        .withIndex("by_user_time", (q) => q.eq("userId", args.userId))
+        .withIndex("by_user_time", (q) => q.eq("userId", userId))
         .take(BATCH_SIZE);
-      if (events.length === 0) {
-        hasMore = false;
-      } else {
-        for (const event of events) {
-          await ctx.db.delete(event._id);
-        }
-        if (events.length < BATCH_SIZE) hasMore = false;
+    }
+
+    let events = await fetchEventBatch(ctx, args.userId);
+    while (events.length > 0) {
+      for (const event of events) {
+        await ctx.db.delete(event._id);
       }
+      if (events.length < BATCH_SIZE) break;
+      events = await fetchEventBatch(ctx, args.userId);
     }
 
     const sessions = await ctx.db

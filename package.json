@@ -1,6 +1,7 @@
 {
   "name": "convex-analytics-monorepo",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
@@ -15,6 +16,8 @@
     "pnpm": ">=9.0.0"
   },
   "devDependencies": {
+    "@vllnt/eslint-config": "^1.0.0",
+    "eslint": "^9.39.4",
     "turbo": "^2.4.0",
     "typescript": "~5.7.0"
   }

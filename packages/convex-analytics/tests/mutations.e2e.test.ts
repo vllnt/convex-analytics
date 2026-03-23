@@ -89,7 +89,7 @@ describe("track.identify", () => {
       await ctx.db.insert("users", makeUser({ visitorId: "u1", device: "desktop" }) as never);
     });
 
-    await t.mutation(api.track.identify, {
+    await t.mutation(api.mutations.identify, {
       userId: "u1",
       traits: { device: "mobile" },
     });
@@ -107,7 +107,7 @@ describe("track.identify", () => {
   it("returns null (no-op) for non-existent user", async () => {
     const t = initTest();
 
-    const result = await t.mutation(api.track.identify, {
+    const result = await t.mutation(api.mutations.identify, {
       userId: "does_not_exist",
       traits: { device: "mobile" },
     });
@@ -131,7 +131,7 @@ describe("track.identify", () => {
       );
     });
 
-    await t.mutation(api.track.identify, {
+    await t.mutation(api.mutations.identify, {
       userId: "u1",
       traits: {
         device: "tablet",
@@ -166,7 +166,7 @@ describe("track.identify", () => {
       await ctx.db.insert("users", makeUser({ visitorId: "u1", device: "desktop" }) as never);
     });
 
-    await t.mutation(api.track.identify, { userId: "u1", traits: {} });
+    await t.mutation(api.mutations.identify, { userId: "u1", traits: {} });
 
     await t.run(async (ctx) => {
       const user = await ctx.db
@@ -184,7 +184,7 @@ describe("track.identify", () => {
       await ctx.db.insert("users", makeUser({ visitorId: "u1", device: "desktop" }) as never);
     });
 
-    await t.mutation(api.track.identify, {
+    await t.mutation(api.mutations.identify, {
       userId: "u1",
       traits: { device: 123, browser: true, os: null },
     });
@@ -243,7 +243,7 @@ describe("track.alias", () => {
       await ctx.db.insert("sessions", makeSession({ userId: "real_1", sessionId: "s_r1" }) as never);
     });
 
-    await t.mutation(api.track.alias, {
+    await t.mutation(api.mutations.alias, {
       anonymousId: "anon_1",
       identifiedId: "real_1",
     });
@@ -300,7 +300,7 @@ describe("track.alias", () => {
       await ctx.db.insert("events", makeEvent({ userId: "u1" }) as never);
     });
 
-    await t.mutation(api.track.alias, {
+    await t.mutation(api.mutations.alias, {
       anonymousId: "u1",
       identifiedId: "u1",
     });
@@ -322,7 +322,7 @@ describe("track.alias", () => {
       await ctx.db.insert("users", makeUser({ visitorId: "real_1" }) as never);
     });
 
-    await t.mutation(api.track.alias, {
+    await t.mutation(api.mutations.alias, {
       anonymousId: "ghost",
       identifiedId: "real_1",
     });
@@ -349,7 +349,7 @@ describe("track.alias", () => {
       await ctx.db.insert("sessions", makeSession({ userId: "anon_1", sessionId: "s_a" }) as never);
     });
 
-    await t.mutation(api.track.alias, {
+    await t.mutation(api.mutations.alias, {
       anonymousId: "anon_1",
       identifiedId: "new_user",
     });
@@ -400,7 +400,7 @@ describe("crons.rollup", () => {
       await ctx.db.insert("events", makeEvent({ userId: "u1", timestamp: now - 180_000, name: "signup" }) as never);
     });
 
-    await t.mutation(internal.crons.rollup, {});
+    await t.mutation(internal.internal_mutations.rollup, {});
 
     await t.run(async (ctx) => {
       const rollups = await ctx.db.query("daily_rollups").collect();
@@ -434,8 +434,8 @@ describe("crons.rollup", () => {
       await ctx.db.insert("events", makeEvent({ userId: "u2", timestamp: now - 120_000, name: "click" }) as never);
     });
 
-    await t.mutation(internal.crons.rollup, {});
-    await t.mutation(internal.crons.rollup, {});
+    await t.mutation(internal.internal_mutations.rollup, {});
+    await t.mutation(internal.internal_mutations.rollup, {});
 
     await t.run(async (ctx) => {
       const todayDate = new Date(now).toISOString().split("T")[0]!;
@@ -460,7 +460,7 @@ describe("crons.rollup", () => {
       await ctx.db.insert("events", makeEvent({ userId: "u1", timestamp: fifteenMinAgo, name: "old_event" }) as never);
     });
 
-    await t.mutation(internal.crons.rollup, {});
+    await t.mutation(internal.internal_mutations.rollup, {});
 
     await t.run(async (ctx) => {
       const rollups = await ctx.db.query("daily_rollups").collect();
@@ -502,7 +502,7 @@ describe("crons.closeInactiveSessions", () => {
       );
     });
 
-    await t.mutation(internal.crons.closeInactiveSessions, {});
+    await t.mutation(internal.internal_mutations.closeInactiveSessions, {});
 
     await t.run(async (ctx) => {
       const session = await ctx.db
@@ -543,7 +543,7 @@ describe("crons.closeInactiveSessions", () => {
       );
     });
 
-    await t.mutation(internal.crons.closeInactiveSessions, {});
+    await t.mutation(internal.internal_mutations.closeInactiveSessions, {});
 
     await t.run(async (ctx) => {
       const session = await ctx.db
@@ -576,7 +576,7 @@ describe("crons.closeInactiveSessions", () => {
       );
     });
 
-    await t.mutation(internal.crons.closeInactiveSessions, {});
+    await t.mutation(internal.internal_mutations.closeInactiveSessions, {});
 
     await t.run(async (ctx) => {
       const session = await ctx.db
@@ -608,7 +608,7 @@ describe("crons.ttlCleanup", () => {
       await ctx.db.insert("events", makeEvent({ userId: "u1", timestamp: now - 60_000, name: "recent" }) as never);
     });
 
-    await t.mutation(internal.crons.ttlCleanup, {});
+    await t.mutation(internal.internal_mutations.ttlCleanup, {});
 
     await t.run(async (ctx) => {
       const events = await ctx.db.query("events").collect();
@@ -629,7 +629,7 @@ describe("crons.ttlCleanup", () => {
       );
     });
 
-    await t.mutation(internal.crons.ttlCleanup, {});
+    await t.mutation(internal.internal_mutations.ttlCleanup, {});
 
     await t.run(async (ctx) => {
       const events = await ctx.db.query("events").collect();
@@ -646,7 +646,7 @@ describe("crons.monitor", () => {
   it("runs without crashing on empty database", async () => {
     const t = initTest();
 
-    const result = await t.mutation(internal.crons.monitor, {});
+    const result = await t.mutation(internal.internal_mutations.monitor, {});
     expect(result).toBeNull();
   });
 
@@ -671,7 +671,7 @@ describe("crons.monitor", () => {
       await ctx.db.insert("users", makeUser({ visitorId: "u0" }) as never);
     });
 
-    const result = await t.mutation(internal.crons.monitor, {});
+    const result = await t.mutation(internal.internal_mutations.monitor, {});
     expect(result).toBeNull();
   });
 });
@@ -695,7 +695,7 @@ describe("crons.deleteUser", () => {
       await ctx.db.insert("sessions", makeSession({ userId: "target", sessionId: "s_t2" }) as never);
     });
 
-    await t.mutation(internal.crons.deleteUser, { userId: "target" });
+    await t.mutation(internal.internal_mutations.deleteUser, { userId: "target" });
 
     await t.run(async (ctx) => {
       const user = await ctx.db
@@ -734,7 +734,7 @@ describe("crons.deleteUser", () => {
       await ctx.db.insert("sessions", makeSession({ userId: "bystander", sessionId: "s_b" }) as never);
     });
 
-    await t.mutation(internal.crons.deleteUser, { userId: "target" });
+    await t.mutation(internal.internal_mutations.deleteUser, { userId: "target" });
 
     await t.run(async (ctx) => {
       const bystander = await ctx.db
@@ -760,7 +760,7 @@ describe("crons.deleteUser", () => {
   it("no-ops when userId does not exist", async () => {
     const t = initTest();
 
-    const result = await t.mutation(internal.crons.deleteUser, { userId: "ghost" });
+    const result = await t.mutation(internal.internal_mutations.deleteUser, { userId: "ghost" });
     expect(result).toBeNull();
   });
 });

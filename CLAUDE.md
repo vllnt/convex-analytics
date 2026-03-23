@@ -8,17 +8,16 @@ Full-featured API-first analytics engine for Convex. Reusable component — moun
 packages/
   convex-analytics/          # Core component (npm: convex-analytics)
     src/
-      client.ts              # ConvexAnalytics<T> class — public API
-      index.ts               # Re-exports from client.ts
+      client/
+        index.ts             # ConvexAnalytics<T> class — public API
       test.ts                # Test helper (convex-test register)
       component/
         schema.ts            # 7 tables, 20 indexes — source of truth
-        track.ts             # Write path: track(), identify(), alias()
-        queries.ts           # Read path: 15 query functions
-        api.ts               # HTTP endpoints (24 REST routes)
-        crons.ts             # 5 cron handlers (rollup, session, TTL, monitor, rebalance)
-        config.ts            # Config CRUD + event schema management
-        validators.ts        # Shared Convex validators
+        mutations.ts         # Write: track(), identify(), alias(), config set/upsert
+        queries.ts           # Read: 18 query functions (analytics + config)
+        http.ts              # HTTP endpoints (24 REST routes)
+        internal_mutations.ts # Crons: rollup, session close, TTL, monitor, rebalance, GDPR delete
+        validators.ts        # Shared validators + v.any() aliases
         convex.config.ts     # Component definition + child components
         _generated/          # AUTO-GENERATED — never edit
     tests/                   # Vitest tests (convex-test)
@@ -94,12 +93,12 @@ function initTest() {
 
 ## Safe to Edit
 
-- `src/client.ts` — public API surface
-- `src/component/track.ts` — write path logic
-- `src/component/queries.ts` — read path logic
-- `src/component/api.ts` — HTTP endpoint handlers
-- `src/component/crons.ts` — cron job handlers
-- `src/component/config.ts` — config management
+- `src/client/index.ts` — public API surface
+- `src/component/mutations.ts` — write path (track, identify, alias, config set/upsert)
+- `src/component/queries.ts` — read path (analytics + config queries)
+- `src/component/http.ts` — HTTP endpoint handlers
+- `src/component/internal_mutations.ts` — cron handlers (rollup, session, TTL, monitor, rebalance, GDPR)
+- `src/component/validators.ts` — shared validators + v.any() aliases
 - `tests/**` — test files
 
 ## Auto-Generated — Never Edit

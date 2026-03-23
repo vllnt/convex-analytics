@@ -88,7 +88,7 @@ export class ConvexAnalytics<
   private component: unknown;
   private _debug = false;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   constructor(component: unknown, _config?: ConvexAnalyticsConfig) {
     this.component = component;
   }
@@ -108,8 +108,8 @@ export class ConvexAnalytics<
     if (this._debug) {
       logger.debug("track", { name, userId, sessionId, properties, metadata });
     }
-    const api = this.component as { track: { track: unknown } };
-    await ctx.runMutation(api.track.track as never, ({
+    const api = this.component as { mutations: { track: unknown } };
+    await ctx.runMutation(api.mutations.track as never, ({
       userId,
       sessionId,
       name,
@@ -123,8 +123,8 @@ export class ConvexAnalytics<
     userId: string,
     traits?: Record<string, unknown>,
   ): Promise<void> {
-    const api = this.component as { track: { identify: unknown } };
-    await ctx.runMutation(api.track.identify as never, ({
+    const api = this.component as { mutations: { identify: unknown } };
+    await ctx.runMutation(api.mutations.identify as never, ({
       userId,
       traits,
     }) as never);
@@ -135,8 +135,8 @@ export class ConvexAnalytics<
     anonymousId: string,
     identifiedId: string,
   ): Promise<void> {
-    const api = this.component as { track: { alias: unknown } };
-    await ctx.runMutation(api.track.alias as never, ({
+    const api = this.component as { mutations: { alias: unknown } };
+    await ctx.runMutation(api.mutations.alias as never, ({
       anonymousId,
       identifiedId,
     }) as never);
