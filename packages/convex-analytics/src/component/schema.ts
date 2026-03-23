@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { propertiesValidator, dimensionsValidator, allowedPropertiesValidator } from "./validators.js";
 
 export default defineSchema({
   events: defineTable({
@@ -9,7 +10,7 @@ export default defineSchema({
     projectId: v.string(),
     env: v.string(),
     platform: v.string(),
-    properties: v.any(),
+    properties: propertiesValidator,
     timestamp: v.number(),
     path: v.string(),
     locale: v.string(),
@@ -85,7 +86,7 @@ export default defineSchema({
     date: v.string(),
     count: v.number(),
     uniqueUsers: v.number(),
-    dimensions: v.any(),
+    dimensions: dimensionsValidator,
   })
     .index("by_name_date", ["name", "date"])
     .index("by_project_date", ["projectId", "name", "date"])
@@ -93,7 +94,7 @@ export default defineSchema({
 
   event_schemas: defineTable({
     name: v.string(),
-    allowedProperties: v.any(),
+    allowedProperties: allowedPropertiesValidator,
   }).index("by_name", ["name"]),
 
   config: defineTable({

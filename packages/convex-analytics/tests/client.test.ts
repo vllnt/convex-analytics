@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { ConvexAnalytics } from "../src/client.js";
+import { ConvexAnalytics } from "../src/client/index.js";
 
 const componentMock = {
-  track: { track: "mock_ref", identify: "mock_ref", alias: "mock_ref" },
+  mutations: { track: "mock_ref", identify: "mock_ref", alias: "mock_ref" },
   queries: { count: "mock_ref", list: "mock_ref", summary: "mock_ref" },
 };
 

@@ -1,5 +1,23 @@
 import { v } from "convex/values";
 
+/** Arbitrary event properties (JSON object). */
+export const propertiesValidator = v.any();
+
+/** Pre-aggregated dimension breakdowns in daily_rollups. */
+export const dimensionsValidator = v.any();
+
+/** Event schema property type mappings: { key: "string"|"number"|"boolean" }. */
+export const allowedPropertiesValidator = v.any();
+
+/** identify() traits object. */
+export const traitsValidator = v.any();
+
+/** configSetMany entries object. */
+export const configEntriesValidator = v.any();
+
+/** Generic return type validator for complex query results. */
+export const anyResultValidator = v.any();
+
 export const trackArgs = {
   userId: v.string(),
   sessionId: v.string(),
@@ -7,7 +25,7 @@ export const trackArgs = {
   projectId: v.optional(v.string()),
   env: v.optional(v.string()),
   platform: v.optional(v.string()),
-  properties: v.optional(v.any()),
+  properties: v.optional(propertiesValidator),
   timestamp: v.optional(v.number()),
   path: v.optional(v.string()),
   locale: v.optional(v.string()),

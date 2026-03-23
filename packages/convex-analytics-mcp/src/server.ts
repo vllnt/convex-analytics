@@ -47,7 +47,7 @@ async function apiGet(path: string, params?: Record<string, string>): Promise<un
   return res.json();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 async function apiPost(path: string, body: unknown): Promise<unknown> {
   const url = `${BASE_URL}/api/analytics${path}`;
   const res = await fetch(url, {
@@ -65,7 +65,7 @@ async function apiPost(path: string, body: unknown): Promise<unknown> {
   return res.json();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 async function apiDelete(path: string, params?: Record<string, string>): Promise<unknown> {
   const url = new URL(`${BASE_URL}/api/analytics${path}`);
   if (params) {
