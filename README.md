@@ -157,6 +157,11 @@ Full documentation in [`docs/`](docs/):
 
 For AI agents: [`llms.txt`](llms.txt) | [`llms-full.txt`](llms-full.txt)
 
+## Community
+
+- [Discord](https://bntvllnt.com/discord) — questions, feedback, support
+- [X / Twitter](https://bntvllnt.com/x) — updates and announcements
+
 ## License
 
 MIT
