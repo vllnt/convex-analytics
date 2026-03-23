@@ -1,0 +1,46 @@
+# Publish to npm — DISABLED until public release
+# Uncomment the `on:` trigger when ready to publish.
+name: Publish
+
+# on:
+#   push:
+#     tags:
+#       - "v*"
+
+on: workflow_dispatch
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: pnpm test
+
+      - name: Publish @vllnt/convex-analytics
+        working-directory: packages/convex-analytics
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish convex-analytics-mcp
+        working-directory: packages/convex-analytics-mcp
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
