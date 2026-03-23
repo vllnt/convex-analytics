@@ -108,4 +108,6 @@ After updating `docs/`, also update `llms-full.txt` (concatenation of all docs).
 
 ## Questions?
 
-Open an issue on GitHub — we're happy to help.
+- [Discord](https://bntvllnt.com/discord) — ask questions, share feedback
+- [X / Twitter](https://bntvllnt.com/x) — follow for updates
+- Or open an issue on GitHub
