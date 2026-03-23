@@ -1,6 +1,6 @@
 # convex-analytics
 
-[![npm](https://img.shields.io/npm/v/convex-analytics)](https://www.npmjs.com/package/convex-analytics)
+[![npm](https://img.shields.io/npm/v/@vllnt/convex-analytics)](https://www.npmjs.com/package/@vllnt/convex-analytics)
 [![CI](https://github.com/bntvllnt/convex-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/bntvllnt/convex-analytics/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -26,13 +26,13 @@ Full-featured API-first analytics engine for [Convex](https://convex.dev). Reusa
 ## Quick Start
 
 ```bash
-npm install convex-analytics
+npm install @vllnt/convex-analytics
 ```
 
 ```typescript
 // convex/convex.config.ts
 import { defineApp } from "convex/server";
-import analytics from "convex-analytics/convex.config";
+import analytics from "@vllnt/convex-analytics/convex.config";
 
 const app = defineApp();
 app.use(analytics);
@@ -41,7 +41,7 @@ export default app;
 
 ```typescript
 // Track events (server-side — zero bundle size)
-import { ConvexAnalytics } from "convex-analytics";
+import { ConvexAnalytics } from "@vllnt/convex-analytics";
 import { components } from "./_generated/api";
 
 const analytics = new ConvexAnalytics(components.analytics);
@@ -133,7 +133,7 @@ pnpm test  # runs all tests across packages
 For consumer testing:
 
 ```typescript
-import analyticsTest from "convex-analytics/test";
+import analyticsTest from "@vllnt/convex-analytics/test";
 import { convexTest } from "convex-test";
 
 function initTest() {

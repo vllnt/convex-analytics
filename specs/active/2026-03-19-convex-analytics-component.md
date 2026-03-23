@@ -31,7 +31,7 @@ Previous spec pivoted from PostHog after 8-perspective deep analysis surfaced: s
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  convex-analytics (Convex Component — npm package)                          │
+│  @vllnt/convex-analytics (Convex Component — npm package)                    │
 │                                                                              │
 │  WRITE PATH                                READ PATH                         │
 │  ──────────                                ─────────                         │
@@ -611,7 +611,7 @@ AI-native query layer — the differentiator.
 
 **MCP Server package: `convex-analytics-mcp`**
 
-Standalone MCP server that connects to any Convex deployment running `convex-analytics`.
+Standalone MCP server that connects to any Convex deployment running `@vllnt/convex-analytics`.
 
 | Tool | Params | Description |
 |------|--------|-------------|
@@ -644,7 +644,7 @@ Standalone MCP server that connects to any Convex deployment running `convex-ana
 
 | Task | Detail |
 |------|--------|
-| npm package: `convex-analytics` | Component + client + types |
+| npm package: `@vllnt/convex-analytics` | Component + client + types |
 | npm package: `convex-analytics-mcp` | Standalone MCP server |
 | README | Setup guide, API reference, MCP connection instructions |
 | Demo project | Minimal Next.js + Convex app showing integration |
@@ -658,10 +658,10 @@ Standalone MCP server that connects to any Convex deployment running `convex-ana
 
 ACTOR: Developer adding analytics to their Convex app
 GOAL: Track events with full analytics capabilities, query via API/MCP
-PRECONDITION: Convex app exists, `convex-analytics` installed
+PRECONDITION: Convex app exists, `@vllnt/convex-analytics` installed
 
 1. Developer installs package
-   → `npm install convex-analytics`
+   → `npm install @vllnt/convex-analytics`
    → Adds `app.use(analytics)` in `convex.config.ts`
    → Deploys — tables auto-created, crons auto-scheduled
 
@@ -826,7 +826,7 @@ EC11. Archive file download: Authenticated endpoint returns signed URL to Convex
 
 ### Phase 5 — Open Source (BLOCKING)
 
-- [ ] AC-37: GIVEN `npm install convex-analytics` WHEN app.use(analytics) + deploy THEN tables created, crons running, API accessible
+- [ ] AC-37: GIVEN `npm install @vllnt/convex-analytics` WHEN app.use(analytics) + deploy THEN tables created, crons running, API accessible
 - [ ] AC-38: GIVEN `convex-analytics-mcp` installed WHEN configured with CONVEX_URL + API_KEY THEN all MCP tools functional
 - [ ] AC-39: GIVEN demo project WHEN deployed to Convex THEN events trackable + queryable end-to-end
 
@@ -892,8 +892,8 @@ EC11. Archive file download: Authenticated endpoint returns signed URL to Convex
 
 ### Phase 5 — Open Source
 
-- [ ] S-28. npm packaging: convex-analytics + convex-analytics-mcp → AC-37, AC-38
-- [ ] S-28b. Export test helper: `convex-analytics/test` with register() for consumer testing → AC-37
+- [ ] S-28. npm packaging: @vllnt/convex-analytics + convex-analytics-mcp → AC-37, AC-38
+- [ ] S-28b. Export test helper: `@vllnt/convex-analytics/test` with register() for consumer testing → AC-37
 - [ ] S-29. README + API reference documentation → AC-37
 - [ ] S-30. Demo project → AC-39
 - [ ] S-31. Convex component registry submission → AC-37
@@ -1101,7 +1101,7 @@ export function initConvexTest() {
 
 #### Open-Source Test Helper Export (Phase 5 — BLOCKING)
 
-The `convex-analytics` package MUST export a test registration helper so consumers can test their integration:
+The `@vllnt/convex-analytics` package MUST export a test registration helper so consumers can test their integration:
 
 ```typescript
 // packages/convex-analytics/src/test.ts — exported from package
@@ -1112,7 +1112,7 @@ const modules = import.meta.glob("./component/**/*.ts");
 export default {
   register(t: ConvexTest) {
     // Registers component tables, child components, modules
-    // So consumers can test their integration with convex-analytics
+    // So consumers can test their integration with @vllnt/convex-analytics
   },
   schema,
   modules,
@@ -1123,7 +1123,7 @@ Consumer usage:
 
 ```typescript
 // In consumer's test file
-import analyticsTest from "convex-analytics/test";
+import analyticsTest from "@vllnt/convex-analytics/test";
 import { convexTest } from "convex-test";
 import { components } from "./_generated/api";
 

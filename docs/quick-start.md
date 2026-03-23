@@ -5,11 +5,11 @@ Get analytics running in your Convex app in under 5 minutes.
 ## 1. Install
 
 ```bash
-npm install convex-analytics
+npm install @vllnt/convex-analytics
 # or
-pnpm add convex-analytics
+pnpm add @vllnt/convex-analytics
 # or
-yarn add convex-analytics
+yarn add @vllnt/convex-analytics
 ```
 
 ## 2. Mount the component
@@ -18,7 +18,7 @@ In your `convex/convex.config.ts`:
 
 ```typescript
 import { defineApp } from "convex/server";
-import analytics from "convex-analytics/convex.config";
+import analytics from "@vllnt/convex-analytics/convex.config";
 
 const app = defineApp();
 app.use(analytics);
@@ -28,7 +28,7 @@ export default app;
 ## 3. Create a typed client
 
 ```typescript
-import { ConvexAnalytics } from "convex-analytics";
+import { ConvexAnalytics } from "@vllnt/convex-analytics";
 import { components } from "./_generated/api";
 
 // Untyped (zero friction) — accepts any event name and properties
@@ -89,7 +89,7 @@ This gives Claude Code 12 analytics tools via the MCP server.
 ## 8. Testing with convex-test
 
 ```typescript
-import analyticsTest from "convex-analytics/test";
+import analyticsTest from "@vllnt/convex-analytics/test";
 import { convexTest } from "convex-test";
 
 function initTest() {

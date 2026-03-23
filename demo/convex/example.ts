@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { components } from "./_generated/api";
-import { ConvexAnalytics } from "convex-analytics";
+import { ConvexAnalytics } from "@vllnt/convex-analytics";
 import { v } from "convex/values";
 
 type MyEvents = {

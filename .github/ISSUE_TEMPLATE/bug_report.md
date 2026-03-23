@@ -25,7 +25,7 @@ What actually happens.
 
 ## Environment
 
-- convex-analytics version:
+- @vllnt/convex-analytics version:
 - Convex version:
 - Node.js version:
 - Package manager:
