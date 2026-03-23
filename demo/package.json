@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "convex": "^1.21.0",
-    "convex-analytics": "workspace:*"
+    "@vllnt/convex-analytics": "workspace:*"
   }
 }

@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-product**: `projectId` + `env` + `platform` scoping across all queries
 - **Crons**: Rollup aggregation, session closer, TTL cleanup, storage monitor, counter rebalance
 - **Client SDK**: `ConvexAnalytics<T>` with generic type safety for event names and properties
-- **Testing**: `convex-analytics/test` export for convex-test integration
+- **Testing**: `@vllnt/convex-analytics/test` export for convex-test integration
 - **Property schemas**: Declarative property validation with silent filtering
 - **Sharded counter**: 16-shard high-throughput event counting
 - **Rate limiter**: Token bucket (100/min per session) with silent drop

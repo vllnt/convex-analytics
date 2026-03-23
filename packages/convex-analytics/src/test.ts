@@ -10,7 +10,7 @@ const modules = import.meta.glob("./component/**/*.ts");
  *
  * @example
  * ```typescript
- * import analyticsTest from "convex-analytics/test";
+ * import analyticsTest from "@vllnt/convex-analytics/test";
  * import { convexTest } from "convex-test";
  *
  * function initTest() {

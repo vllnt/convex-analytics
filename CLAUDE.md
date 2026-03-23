@@ -6,7 +6,7 @@ Full-featured API-first analytics engine for Convex. Reusable component — moun
 
 ```
 packages/
-  convex-analytics/          # Core component (npm: convex-analytics)
+  convex-analytics/          # Core component (npm: @vllnt/convex-analytics)
     src/
       client/
         index.ts             # ConvexAnalytics<T> class — public API
@@ -81,7 +81,7 @@ For AI agents loading full context: see `llms-full.txt` (all docs concatenated).
 Uses `convex-test` with Vitest. Test files in `packages/convex-analytics/tests/`.
 
 ```typescript
-import analyticsTest from "convex-analytics/test";
+import analyticsTest from "@vllnt/convex-analytics/test";
 import { convexTest } from "convex-test";
 
 function initTest() {

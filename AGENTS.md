@@ -49,7 +49,7 @@ Crons (background):
 
 | Package | Purpose |
 |---------|---------|
-| `packages/convex-analytics` | Core Convex component: schema, mutations, queries, HTTP API |
+| `packages/convex-analytics` | Core Convex component (npm: @vllnt/convex-analytics): schema, mutations, queries, HTTP API |
 | `packages/convex-analytics-mcp` | MCP server: 12 tools for AI-native analytics queries |
 | `demo/` | Demo Convex app for testing |
 

@@ -1,5 +1,5 @@
 import { defineApp } from "convex/server";
-import analytics from "convex-analytics/convex.config";
+import analytics from "@vllnt/convex-analytics/convex.config";
 
 const app = defineApp();
 app.use(analytics);

@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest a feature for convex-analytics
+about: Suggest a feature for @vllnt/convex-analytics
 title: "[feature] "
 labels: enhancement
 ---
