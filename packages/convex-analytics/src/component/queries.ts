@@ -22,7 +22,7 @@ export const list = query({
 
     // H3: Use by_project_name index when projectId is provided for correct pagination
     if (args.projectId) {
-      let q = ctx.db
+      const q = ctx.db
         .query("events")
         .withIndex("by_project_name", (q) =>
           q.eq("projectId", args.projectId!).eq("name", args.name),
