@@ -10,17 +10,19 @@
  *     --env ANALYTICS_API_KEY=your-key
  */
 
-import { ConvexHttpClient } from "convex/browser";
+import { createBackendLogger } from "@vllnt/logger";
+
+const logger = createBackendLogger("convex-analytics-mcp");
 
 const _CONVEX_URL = process.env["CONVEX_URL"];
 const _API_KEY = process.env["ANALYTICS_API_KEY"];
 
 if (!_CONVEX_URL) {
-  console.error("CONVEX_URL environment variable required");
+  logger.error("missing-env", { variable: "CONVEX_URL" });
   process.exit(1);
 }
 if (!_API_KEY) {
-  console.error("ANALYTICS_API_KEY environment variable required");
+  logger.error("missing-env", { variable: "ANALYTICS_API_KEY" });
   process.exit(1);
 }
 
@@ -45,6 +47,7 @@ async function apiGet(path: string, params?: Record<string, string>): Promise<un
   return res.json();
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function apiPost(path: string, body: unknown): Promise<unknown> {
   const url = `${BASE_URL}/api/analytics${path}`;
   const res = await fetch(url, {
@@ -62,6 +65,7 @@ async function apiPost(path: string, body: unknown): Promise<unknown> {
   return res.json();
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function apiDelete(path: string, params?: Record<string, string>): Promise<unknown> {
   const url = new URL(`${BASE_URL}/api/analytics${path}`);
   if (params) {
@@ -561,4 +565,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(console.error);
+main().catch((err: unknown) => logger.error("fatal", { error: err instanceof Error ? err.message : String(err) }));

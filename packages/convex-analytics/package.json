@@ -23,17 +23,18 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "convex": "^1.21.0",
     "@convex-dev/aggregate": "^0.2.1",
+    "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/sharded-counter": "^0.2.0",
-    "@convex-dev/rate-limiter": "^0.3.2"
+    "@vllnt/logger": "^0.1.2",
+    "convex": "^1.21.0"
   },
   "devDependencies": {
     "convex-test": "^0.0.36",
-    "vite": "^6.0.0",
-    "vitest": "^3.0.0",
+    "tsd": "^0.31.0",
     "typescript": "~5.7.0",
-    "tsd": "^0.31.0"
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
   },
   "peerDependencies": {
     "convex": ">=1.21.0"
