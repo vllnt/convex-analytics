@@ -7,7 +7,7 @@
     "dev": "npx convex dev"
   },
   "dependencies": {
-    "convex": "^1.21.0",
-    "@vllnt/convex-analytics": "workspace:*"
+    "@vllnt/convex-analytics": "workspace:*",
+    "convex": "^1.36.1"
   }
 }

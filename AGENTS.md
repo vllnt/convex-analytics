@@ -18,7 +18,7 @@ pnpm lint           # Lint all packages
 
 ## Tech Stack
 
-- TypeScript 5.7, strict mode
+- TypeScript 6.0, strict mode
 - Convex (backend-as-a-service — reactive database + serverless functions)
 - Turborepo (monorepo orchestration)
 - Vitest + convex-test (testing)
