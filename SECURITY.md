@@ -10,7 +10,7 @@
 
 **Do not open a public issue for security vulnerabilities.**
 
-Please report security issues via [GitHub Security Advisories](https://github.com/bntvllnt/convex-analytics/security/advisories) or reach out on [Discord](https://bntvllnt.com/discord).
+Please report security issues via [GitHub Security Advisories](https://github.com/bntvllnt/convex-analytics/security/advisories).
 
 ### What to Include
 
