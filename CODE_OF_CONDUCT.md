@@ -10,7 +10,7 @@ Please be respectful, constructive, and professional in all interactions.
 
 ## Reporting
 
-Report conduct issues via [Discord](https://bntvllnt.com/discord) or by opening a GitHub issue for non-sensitive matters. For security vulnerabilities, use [GitHub Security Advisories](https://github.com/bntvllnt/convex-analytics/security/advisories).
+Report conduct issues via by opening a GitHub issue for non-sensitive matters. For security vulnerabilities, use [GitHub Security Advisories](https://github.com/bntvllnt/convex-analytics/security/advisories).
 
 ## Full Text
 
