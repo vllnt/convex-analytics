@@ -1,58 +1,76 @@
 import { v } from "convex/values";
 
-/** Arbitrary event properties (JSON object). */
-export const propertiesValidator = v.any();
+/** A single property value — string, number, boolean, or null. No nested objects/arrays. */
+export const scalarValidator = v.union(
+  v.string(),
+  v.number(),
+  v.boolean(),
+  v.null(),
+);
 
-/** Pre-aggregated dimension breakdowns in daily_rollups. */
-export const dimensionsValidator = v.any();
+/** Event properties: a flat record of scalar values. The generic, typed default — never `v.any()`. */
+export const propsValidator = v.record(v.string(), scalarValidator);
 
-/** Event schema property type mappings: { key: "string"|"number"|"boolean" }. */
-export const allowedPropertiesValidator = v.any();
-
-/** identify() traits object. */
-export const traitsValidator = v.any();
-
-/** configSetMany entries object. */
-export const configEntriesValidator = v.any();
-
-/** Generic return type validator for complex query results. */
-export const anyResultValidator = v.any();
-
-export const trackArgs = {
-  userId: v.string(),
-  sessionId: v.string(),
-  name: v.string(),
-  projectId: v.optional(v.string()),
-  env: v.optional(v.string()),
-  platform: v.optional(v.string()),
-  properties: v.optional(propertiesValidator),
-  timestamp: v.optional(v.number()),
-  path: v.optional(v.string()),
-  locale: v.optional(v.string()),
-  referrer: v.optional(v.string()),
-  device: v.optional(v.string()),
-  browser: v.optional(v.string()),
-  os: v.optional(v.string()),
-  country: v.optional(v.string()),
-  region: v.optional(v.string()),
-  city: v.optional(v.string()),
-  utmSource: v.optional(v.string()),
-  utmMedium: v.optional(v.string()),
-  utmCampaign: v.optional(v.string()),
-};
-
-export const scopingArgs = {
-  projectId: v.optional(v.string()),
-  env: v.optional(v.string()),
-  platform: v.optional(v.string()),
-};
-
-export const timeRangeArgs = {
+/** A time range in epoch millis. */
+export const rangeValidator = v.object({
   from: v.optional(v.number()),
   to: v.optional(v.number()),
-};
+});
 
-export const paginationArgs = {
-  limit: v.optional(v.number()),
-  cursor: v.optional(v.string()),
-};
+/** A dimension filter: count only events whose `dim` prop equals `val`. */
+export const whereValidator = v.object({
+  dim: v.string(),
+  val: scalarValidator,
+});
+
+/** Rollup bucket granularity. */
+export const granularityValidator = v.union(v.literal("hour"), v.literal("day"));
+
+/** A raw event as returned by reads. */
+export const eventView = v.object({
+  _id: v.string(),
+  _creationTime: v.number(),
+  scope: v.string(),
+  name: v.string(),
+  subjectRef: v.optional(v.string()),
+  sessionRef: v.optional(v.string()),
+  props: propsValidator,
+  ts: v.number(),
+  seq: v.number(),
+  dedupeKey: v.optional(v.string()),
+});
+
+/** A `(value, count)` pair for `top` breakdowns. */
+export const topRow = v.object({ value: v.string(), count: v.number() });
+
+/** A `(bucket, count)` pair for `timeseries`. */
+export const timeseriesPoint = v.object({ bucket: v.number(), count: v.number() });
+
+/** DAU/WAU/MAU rollup of distinct subjects. */
+export const uniquesView = v.object({
+  dau: v.number(),
+  wau: v.number(),
+  mau: v.number(),
+  trend: v.array(v.object({ bucket: v.number(), uniques: v.number() })),
+});
+
+/** A single funnel step result. */
+export const funnelStep = v.object({
+  name: v.string(),
+  count: v.number(),
+  rate: v.number(),
+});
+
+/** A single retention cohort row. */
+export const retentionCohort = v.object({
+  cohort: v.number(),
+  size: v.number(),
+  retained: v.array(v.number()),
+});
+
+/** Paginated raw-event page (Convex pagination result shape). */
+export const eventPage = v.object({
+  page: v.array(eventView),
+  isDone: v.boolean(),
+  continueCursor: v.string(),
+});

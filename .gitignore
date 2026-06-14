@@ -8,3 +8,7 @@ convex/_generated/
 demo/convex/_generated/
 .turbo/
 *.tsbuildinfo
+coverage/
+.vllnt/
+.claude/
+skills-lock.json

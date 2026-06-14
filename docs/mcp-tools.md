@@ -1,5 +1,8 @@
 # MCP Tools
 
+The `convex-analytics-mcp` server exposes the generic analytics surface as MCP tools over the
+component's REST endpoints.
+
 ## Setup
 
 ```bash
@@ -8,77 +11,60 @@ claude mcp add convex-analytics-mcp \
   --env ANALYTICS_API_KEY=your-key
 ```
 
-Requires: CONVEX_URL and ANALYTICS_API_KEY environment variables.
+Requires `CONVEX_URL` and `ANALYTICS_API_KEY`. The server targets the `.convex.site` REST
+host derived from `CONVEX_URL`.
 
-## Tools (12)
+## Tools (7)
 
-### Structured Query Tools (9)
+### track
 
-**get_timeseries** -- Event counts over time
-- Input: `name` (required), `interval` (day|week|month), `from`, `to`, `projectId`
-- Output: Table of date, count, uniques
-- Example: "Show me page_view trends this month"
+Ingest an event (rollup-on-write).
 
-**get_funnel** -- Conversion funnel analysis
-- Input: `steps` (required, string array), `window` (default "7d"), `projectId`
-- Output: Table of step, count, rate, dropoff
-- Example: "What's the conversion from page_view -> signup -> purchase?"
+- Input: `name` (required), `dimensions` (required, string[]), `subjectRef`, `sessionRef`, `props`, `granularities`, `scope`, `dedupeKey`.
+- Output: the `track` result (`tracked` / `dropped` / `duplicate`).
 
-**get_retention** -- Cohort retention analysis
-- Input: `event` (required), `period` (day|week|month), `cohorts` (max 12), `projectId`
-- Output: JSON with cohort periods and retention arrays
-- Example: "Show retention for signup events by week"
+### get_metric
 
-**get_breakdown** -- Dimension breakdown
-- Input: `name` (required), `dimension` (required: locale|country|device|browser|os|path|referrer|platform), `projectId`
-- Output: Table of value, count, percentage
-- Example: "Break down page_view by country"
+Total count for an event over a range, optionally filtered by a dimension value.
 
-**get_attribution** -- Traffic source attribution
-- Input: `conversion_event` (required), `projectId`
-- Output: Table of source, conversions, rate
-- Example: "Which sources drive the most signups?"
+- Input: `name` (required), `from`, `to`, `dim`, `val`, `scope`.
+- Output: `<name>: <count> events`.
 
-**get_user_journey** -- Full user timeline
-- Input: `userId` (required), `limit`
-- Output: JSON with user profile, events, sessions
-- Example: "Show me user abc123's journey"
+### get_top
 
-**get_session** -- Session replay (ordered events)
-- Input: `sessionId` (required)
-- Output: JSON with session metadata and events sorted by seqNum
+Top values of any dimension (generic breakdown — `plan`, `country`, `device`, `path`, …).
 
-**get_live** -- Real-time event stream
-- Input: `limit` (default 20), `projectId`
-- Output: Table of recent events (name, userId, path, country, device)
+- Input: `name` (required), `dimension` (required), `limit`, `from`, `to`, `scope`.
+- Output: table of `value | count`.
 
-**compare_periods** -- Period-over-period comparison
-- Input: `name` (required), `interval` (day|week|month), `projectId`
-- Output: Current count, previous count, % change
+### get_timeseries
 
-### AI-Powered Tools (2)
+Event counts bucketed over time.
 
-**detect_anomalies** -- Statistical anomaly detection
-- Input: `name` (optional, all events if omitted), `threshold` (z-score, default 2), `projectId`
-- Uses z-score analysis on daily timeseries
-- Flags days where counts deviate >threshold standard deviations from mean
-- Output: Table of anomalous dates with count, zscore, type (SPIKE|DROP)
+- Input: `name` (required), `granularity` (`hour` \| `day`), `from`, `to`, `dim`, `val`, `scope`.
+- Output: table of `bucket | count`.
 
-**get_stickiness** -- DAU/MAU engagement depth
-- Input: `projectId`
-- Output: Overall ratio + daily trend table
+### get_uniques
 
-### Natural Language Router (1)
+DAU / WAU / MAU over a range.
 
-**query_analytics** -- Route natural language to structured queries
-- Input: `question` (required, plain English)
-- Keyword routing table:
-  - "funnel", "conversion" -> get_funnel
-  - "retention", "retain" -> get_retention
-  - "trending", "trend", "over time" -> get_timeseries
-  - "breakdown", "by country/device/locale" -> get_breakdown
-  - "live", "real-time", "recent" -> get_live
-  - "anomal", "unusual", "spike", "drop" -> detect_anomalies
-  - "stickiness", "dau", "engagement" -> get_stickiness
-  - "compare", "vs", "versus" -> compare_periods
-  - Default -> summary
+- Input: `granularity` (`hour` \| `day`), `from`, `to`, `scope`.
+- Output: JSON `{ dau, wau, mau, trend }`.
+
+### detect_anomalies
+
+Statistical anomaly detection over a timeseries (Z-score). Flags buckets that deviate from
+the mean.
+
+- Input: `name` (required), `granularity`, `from`, `to`, `threshold` (default 2), `scope`.
+- Output: table of anomalous buckets with `count`, `zscore`, `type` (SPIKE / DROP).
+
+### query_analytics
+
+Natural-language router — describe what you want and it dispatches to the right structured
+tool.
+
+- Input: `question` (required), `name`, `dimension`, `scope`.
+- Routes on keywords: trend/over-time → `get_timeseries`; breakdown/top/by → `get_top`;
+  unique/dau/mau → `get_uniques`; anomaly/spike/drop → `detect_anomalies`;
+  count/total/how-many → `get_metric` (default).

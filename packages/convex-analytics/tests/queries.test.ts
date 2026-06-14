@@ -1,444 +1,338 @@
 /// <reference types="vite/client" />
-import { convexTest } from "convex-test";
 import { describe, it, expect } from "vitest";
-import schema from "../src/component/schema.js";
+import { api } from "../src/component/_generated/api.js";
+import { initConvexTest } from "./test-helpers.js";
 
-const modules = import.meta.glob("../src/component/**/*.ts");
+const D = (day: number, hour = 10) => Date.UTC(2026, 0, day, hour, 0, 0);
 
-function initTest() {
-  return convexTest(schema, modules);
-}
-
-async function seedEvents(
-  ctx: { db: { insert: (table: string, doc: Record<string, unknown>) => Promise<unknown> } },
-  events: Array<{ name: string; userId: string; timestamp: number; projectId?: string; locale?: string; country?: string; device?: string }>,
-) {
-  for (const e of events) {
-    await ctx.db.insert("events", {
-      userId: e.userId,
-      sessionId: `s_${e.userId}`,
-      name: e.name,
-      projectId: e.projectId ?? "default",
-      env: "default",
-      platform: "default",
-      properties: {},
-      timestamp: e.timestamp,
-      path: "/",
-      locale: e.locale ?? "en",
-      referrer: "",
-      device: e.device ?? "desktop",
-      browser: "Chrome",
-      os: "macOS",
-      country: e.country ?? "US",
-      seqNum: 0,
+async function seed(
+  t: ReturnType<typeof initConvexTest>,
+  rows: Array<{
+    name?: string;
+    subjectRef?: string;
+    props?: Record<string, string | number | boolean | null>;
+    ts: number;
+    dimensions?: string[];
+    granularities?: ("hour" | "day")[];
+  }>,
+): Promise<void> {
+  for (const r of rows) {
+    await t.mutation(api.mutations.track, {
+      scope: "default",
+      name: r.name ?? "view",
+      subjectRef: r.subjectRef,
+      props: r.props,
+      ts: r.ts,
+      dimensions: r.dimensions ?? [],
+      granularities: r.granularities ?? ["day"],
     });
   }
 }
 
-async function seedRollups(
-  ctx: { db: { insert: (table: string, doc: Record<string, unknown>) => Promise<unknown> } },
-  rollups: Array<{ name: string; date: string; count: number; uniques: number; dimensions?: Record<string, Record<string, number>> }>,
-) {
-  for (const r of rollups) {
-    await ctx.db.insert("daily_rollups", {
-      name: r.name,
-      projectId: "default",
-      env: "default",
-      date: r.date,
-      count: r.count,
-      uniqueUsers: r.uniques,
-      dimensions: r.dimensions ?? { locale: { en: r.count } },
-    });
-  }
-}
-
-describe("Phase 2: Analytics Queries", () => {
-  it("AC-15: timeseries returns daily buckets", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      await seedRollups(ctx as never, [
-        { name: "signup", date: "2026-03-01", count: 5, uniques: 3 },
-        { name: "signup", date: "2026-03-02", count: 8, uniques: 6 },
-        { name: "signup", date: "2026-03-03", count: 3, uniques: 2 },
-      ]);
-
-      const rollups = await ctx.db
-        .query("daily_rollups")
-        .withIndex("by_name_date", (q) => q.eq("name", "signup"))
-        .collect();
-
-      expect(rollups).toHaveLength(3);
-      expect(rollups[0]!.count).toBe(5);
-      expect(rollups[1]!.count).toBe(8);
-    });
+describe("metric", () => {
+  it("uses the sharded counter for an unfiltered, unranged total", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(1) }, { ts: D(2) }, { ts: D(3) }]);
+    expect(await t.query(api.queries.metric, { scope: "default", name: "view" })).toBe(3);
   });
 
-  it("AC-18: breakdown by locale returns grouped counts", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      await seedRollups(ctx as never, [
-        {
-          name: "signup",
-          date: "2026-03-01",
-          count: 10,
-          uniques: 8,
-          dimensions: { locale: { en: 6, fr: 3, de: 1 } },
-        },
-      ]);
-
-      const rollup = await ctx.db
-        .query("daily_rollups")
-        .withIndex("by_name_date", (q) => q.eq("name", "signup"))
-        .first();
-
-      const dims = rollup!.dimensions as Record<string, Record<string, number>>;
-      const localeDim = dims["locale"]!;
-
-      expect(localeDim["en"]).toBe(6);
-      expect(localeDim["fr"]).toBe(3);
-      expect(localeDim["de"]).toBe(1);
+  it("sums day rollups within an inclusive range", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(1) }, { ts: D(2) }, { ts: D(5) }]);
+    const r = await t.query(api.queries.metric, {
+      scope: "default",
+      name: "view",
+      range: { from: D(2), to: D(2, 23) },
     });
+    expect(r).toBe(1);
   });
 
-  it("AC-20: user timeline returns events + sessions", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      await seedEvents(ctx as never, [
-        { name: "page_view", userId: "u1", timestamp: 1000 },
-        { name: "signup", userId: "u1", timestamp: 2000 },
-        { name: "page_view", userId: "u2", timestamp: 3000 },
-      ]);
-
-      const u1Events = await ctx.db
-        .query("events")
-        .withIndex("by_user_time", (q) => q.eq("userId", "u1"))
-        .collect();
-
-      expect(u1Events).toHaveLength(2);
-      expect(u1Events[0]!.name).toBe("page_view");
-      expect(u1Events[1]!.name).toBe("signup");
-    });
+  it("filters by a dimension value via where", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { ts: D(1), props: { plan: "pro" }, dimensions: ["plan"] },
+      { ts: D(1), props: { plan: "free" }, dimensions: ["plan"] },
+      { ts: D(1), props: { plan: "pro" }, dimensions: ["plan"] },
+    ]);
+    expect(
+      await t.query(api.queries.metric, {
+        scope: "default", name: "view", where: { dim: "plan", val: "pro" },
+      }),
+    ).toBe(2);
   });
 
-  it("AC-21: session detail returns ordered events by seqNum", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      for (let i = 0; i < 5; i++) {
-        await ctx.db.insert("events", {
-          userId: "u1",
-          sessionId: "sess_1",
-          name: "click",
-          projectId: "default",
-          env: "default",
-          platform: "default",
-          properties: {},
-          timestamp: 1000 + i * 100,
-          path: `/page${i}`,
-          locale: "en",
-          referrer: "",
-          device: "desktop",
-          browser: "Chrome",
-          os: "macOS",
-          country: "US",
-          seqNum: i,
-        });
-      }
-
-      const events = await ctx.db
-        .query("events")
-        .withIndex("by_session", (q) => q.eq("sessionId", "sess_1"))
-        .collect();
-
-      events.sort((a, b) => a.seqNum - b.seqNum);
-      expect(events).toHaveLength(5);
-      expect(events[0]!.seqNum).toBe(0);
-      expect(events[4]!.seqNum).toBe(4);
-      expect(events[2]!.path).toBe("/page2");
-    });
-  });
-
-  it("AC-22: live returns last N events", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      await seedEvents(ctx as never, [
-        { name: "a", userId: "u1", timestamp: 1000 },
-        { name: "b", userId: "u2", timestamp: 2000 },
-        { name: "c", userId: "u3", timestamp: 3000 },
-      ]);
-
-      const events = await ctx.db
-        .query("events")
-        .order("desc")
-        .take(2);
-
-      expect(events).toHaveLength(2);
-      // Most recent first
-      expect(events[0]!.timestamp).toBeGreaterThanOrEqual(events[1]!.timestamp);
-    });
-  });
-
-  it("AC-24: uniques from daily_rollups", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      await seedRollups(ctx as never, [
-        { name: "page_view", date: "2026-03-01", count: 100, uniques: 20 },
-        { name: "page_view", date: "2026-03-02", count: 150, uniques: 25 },
-        { name: "page_view", date: "2026-03-03", count: 80, uniques: 15 },
-      ]);
-
-      const rollups = await ctx.db
-        .query("daily_rollups")
-        .withIndex("by_date")
-        .collect();
-
-      const totalUniques = rollups.reduce((sum, r) => sum + r.uniqueUsers, 0);
-      expect(totalUniques).toBe(60);
-    });
-  });
-
-  it("AC-25b: lifecycle classifies users", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      const now = Date.now();
-      const weekMs = 7 * 86400000;
-
-      // New user (firstSeen this week)
-      await ctx.db.insert("users", {
-        visitorId: "new_user",
-        projectIds: ["default"],
-        firstSeen: now - 86400000,
-        lastSeen: now,
-        sessionCount: 1,
-        totalEvents: 3,
-        device: "desktop",
-        browser: "Chrome",
-        os: "macOS",
-        locale: "en",
-        country: "US",
-      });
-
-      // Dormant user (not seen in 2 weeks)
-      await ctx.db.insert("users", {
-        visitorId: "dormant_user",
-        projectIds: ["default"],
-        firstSeen: now - 30 * 86400000,
-        lastSeen: now - 15 * 86400000,
-        sessionCount: 5,
-        totalEvents: 20,
-        device: "desktop",
-        browser: "Chrome",
-        os: "macOS",
-        locale: "en",
-        country: "US",
-      });
-
-      const users = await ctx.db.query("users").collect();
-      expect(users).toHaveLength(2);
-
-      const newUser = users.find((u) => u.visitorId === "new_user")!;
-      expect(newUser.firstSeen).toBeGreaterThan(now - weekMs);
-
-      const dormant = users.find((u) => u.visitorId === "dormant_user")!;
-      expect(dormant.lastSeen).toBeLessThan(now - weekMs);
-    });
-  });
-
-  it("EC9: zero-event day returns 0 in timeseries", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      // Only rollup for March 1, not March 2
-      await seedRollups(ctx as never, [
-        { name: "signup", date: "2026-03-01", count: 5, uniques: 3 },
-        { name: "signup", date: "2026-03-03", count: 3, uniques: 2 },
-      ]);
-
-      const rollups = await ctx.db
-        .query("daily_rollups")
-        .withIndex("by_name_date", (q) => q.eq("name", "signup"))
-        .collect();
-
-      // March 2 has no rollup — sparse is correct
-      expect(rollups).toHaveLength(2);
-      expect(rollups.find((r) => r.date === "2026-03-02")).toBeUndefined();
-    });
-  });
-
-  it("AC-15e: scoped query returns only matching projectId", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      await seedEvents(ctx as never, [
-        { name: "signup", userId: "u1", timestamp: 1000, projectId: "docs" },
-        { name: "signup", userId: "u2", timestamp: 2000, projectId: "app" },
-        { name: "signup", userId: "u3", timestamp: 3000, projectId: "docs" },
-      ]);
-
-      const docsEvents = await ctx.db
-        .query("events")
-        .withIndex("by_project_name", (q) =>
-          q.eq("projectId", "docs").eq("name", "signup"),
-        )
-        .collect();
-
-      expect(docsEvents).toHaveLength(2);
-      for (const e of docsEvents) {
-        expect(e.projectId).toBe("docs");
-      }
-    });
+  it("honors only-from and only-to bounds", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(1) }, { ts: D(5) }, { ts: D(9) }]);
+    expect(
+      await t.query(api.queries.metric, { scope: "default", name: "view", range: { from: D(5) } }),
+    ).toBe(2);
+    expect(
+      await t.query(api.queries.metric, { scope: "default", name: "view", range: { to: D(5, 23) } }),
+    ).toBe(2);
   });
 });
 
-describe("Phase 3: Crons", () => {
-  it("AC-27: session closer sets endTime on stale sessions", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      const staleTime = Date.now() - 60 * 60 * 1000; // 1 hour ago
-      const id = await ctx.db.insert("sessions", {
-        userId: "u1",
-        sessionId: "stale_sess",
-        projectId: "default",
-        env: "default",
-        platform: "default",
-        startTime: staleTime,
-        eventCount: 3,
-        entryPath: "/",
-        exitPath: "/about",
-        referrer: "",
-        device: "desktop",
-        browser: "Chrome",
-        os: "macOS",
-        locale: "en",
-        country: "US",
-      });
-
-      // Simulate closing
-      await ctx.db.patch(id, {
-        endTime: staleTime + 5 * 60 * 1000,
-        duration: 5 * 60 * 1000,
-      });
-
-      const closed = await ctx.db.get(id);
-      expect(closed!.endTime).toBeDefined();
-      expect(closed!.duration).toBe(5 * 60 * 1000);
+describe("top", () => {
+  it("ranks dimension values by count and respects limit", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { ts: D(1), props: { c: "a" }, dimensions: ["c"] },
+      { ts: D(1), props: { c: "a" }, dimensions: ["c"] },
+      { ts: D(1), props: { c: "b" }, dimensions: ["c"] },
+      { ts: D(1), props: { c: "x" }, dimensions: ["c"] },
+    ]);
+    const all = await t.query(api.queries.top, { scope: "default", name: "view", dimension: "c" });
+    expect(all[0]).toEqual({ value: "a", count: 2 });
+    const limited = await t.query(api.queries.top, {
+      scope: "default", name: "view", dimension: "c", limit: 1,
     });
+    expect(limited).toHaveLength(1);
   });
 
-  it("AC-31: GDPR delete removes all user data", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      // Create user + events + session
-      await ctx.db.insert("users", {
-        visitorId: "delete_me",
-        projectIds: ["default"],
-        firstSeen: 1000,
-        lastSeen: 2000,
-        sessionCount: 1,
-        totalEvents: 2,
-        device: "desktop",
-        browser: "Chrome",
-        os: "macOS",
-        locale: "en",
-        country: "US",
-      });
-
-      await seedEvents(ctx as never, [
-        { name: "a", userId: "delete_me", timestamp: 1000 },
-        { name: "b", userId: "delete_me", timestamp: 2000 },
-      ]);
-
-      await ctx.db.insert("sessions", {
-        userId: "delete_me",
-        sessionId: "s_delete",
-        projectId: "default",
-        env: "default",
-        platform: "default",
-        startTime: 1000,
-        eventCount: 2,
-        entryPath: "/",
-        exitPath: "/",
-        referrer: "",
-        device: "desktop",
-        browser: "Chrome",
-        os: "macOS",
-        locale: "en",
-        country: "US",
-      });
-
-      // Simulate GDPR deletion
-      const events = await ctx.db
-        .query("events")
-        .withIndex("by_user_time", (q) => q.eq("userId", "delete_me"))
-        .collect();
-      for (const e of events) await ctx.db.delete(e._id);
-
-      const sessions = await ctx.db
-        .query("sessions")
-        .withIndex("by_user", (q) => q.eq("userId", "delete_me"))
-        .collect();
-      for (const s of sessions) await ctx.db.delete(s._id);
-
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_visitor", (q) => q.eq("visitorId", "delete_me"))
-        .unique();
-      if (user) await ctx.db.delete(user._id);
-
-      // Verify everything is gone
-      const remainingEvents = await ctx.db
-        .query("events")
-        .withIndex("by_user_time", (q) => q.eq("userId", "delete_me"))
-        .collect();
-      expect(remainingEvents).toHaveLength(0);
-
-      const remainingSessions = await ctx.db
-        .query("sessions")
-        .withIndex("by_user", (q) => q.eq("userId", "delete_me"))
-        .collect();
-      expect(remainingSessions).toHaveLength(0);
-
-      const remainingUser = await ctx.db
-        .query("users")
-        .withIndex("by_visitor", (q) => q.eq("visitorId", "delete_me"))
-        .unique();
-      expect(remainingUser).toBeNull();
+  it("filters rollups by range, excluding buckets above the to bound", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { ts: D(1), props: { c: "a" }, dimensions: ["c"] },
+      { ts: D(9), props: { c: "a" }, dimensions: ["c"] },
+      { ts: D(20), props: { c: "a" }, dimensions: ["c"] },
+    ]);
+    const r = await t.query(api.queries.top, {
+      scope: "default", name: "view", dimension: "c", range: { from: D(8), to: D(10) },
     });
+    expect(r).toEqual([{ value: "a", count: 1 }]);
+  });
+});
+
+describe("timeseries", () => {
+  it("buckets by day and sorts ascending", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(3) }, { ts: D(1) }, { ts: D(1) }]);
+    const r = await t.query(api.queries.timeseries, {
+      scope: "default", name: "view", granularity: "day", range: {},
+    });
+    expect(r.map((p) => p.count)).toEqual([2, 1]);
+    expect(r[0]!.bucket).toBeLessThan(r[1]!.bucket);
   });
 
-  it("EC7: user record persists after event TTL", async () => {
-    const t = initTest();
-
-    await t.run(async (ctx) => {
-      await ctx.db.insert("users", {
-        visitorId: "old_user",
-        projectIds: ["default"],
-        firstSeen: 1000,
-        lastSeen: 2000,
-        sessionCount: 5,
-        totalEvents: 50,
-        device: "desktop",
-        browser: "Chrome",
-        os: "macOS",
-        locale: "en",
-        country: "US",
-      });
-
-      // Events get deleted by TTL, but user record stays
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_visitor", (q) => q.eq("visitorId", "old_user"))
-        .unique();
-      expect(user).not.toBeNull();
-      expect(user!.totalEvents).toBe(50);
+  it("filters by a dimension value and by range bounds", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { ts: D(1), props: { c: "a" }, dimensions: ["c"] },
+      { ts: D(1), props: { c: "b" }, dimensions: ["c"] },
+      { ts: D(9), props: { c: "a" }, dimensions: ["c"] },
+    ]);
+    const r = await t.query(api.queries.timeseries, {
+      scope: "default", name: "view", granularity: "day",
+      range: { from: D(1), to: D(1, 23) }, where: { dim: "c", val: "a" },
     });
+    expect(r).toEqual([{ bucket: Date.UTC(2026, 0, 1), count: 1 }]);
+  });
+
+  it("excludes buckets below the from bound", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(1) }, { ts: D(9) }]);
+    const r = await t.query(api.queries.timeseries, {
+      scope: "default", name: "view", granularity: "day", range: { from: D(5) },
+    });
+    expect(r).toEqual([{ bucket: Date.UTC(2026, 0, 9), count: 1 }]);
+  });
+});
+
+describe("uniques", () => {
+  it("computes DAU/WAU/MAU + a trend from subjects", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { ts: D(1), subjectRef: "u1" },
+      { ts: D(1), subjectRef: "u2" },
+      { ts: D(2), subjectRef: "u3" },
+    ]);
+    const r = await t.query(api.queries.uniques, {
+      scope: "default", granularity: "day", range: { from: D(1), to: D(2, 23) },
+    });
+    expect(r.mau).toBe(3);
+    expect(r.trend).toHaveLength(2);
+    expect(r.dau).toBeGreaterThan(0);
+  });
+
+  it("returns zeros when no subjects fall in range", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(1), subjectRef: "u1" }]);
+    const r = await t.query(api.queries.uniques, {
+      scope: "default", granularity: "day", range: { from: D(20), to: D(25) },
+    });
+    expect(r).toEqual({ dau: 0, wau: 0, mau: 0, trend: [] });
+  });
+
+  it("defaults the range to the last 30 days when omitted", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: Date.now() - 1000, subjectRef: "u1" }]);
+    const r = await t.query(api.queries.uniques, { scope: "default", granularity: "day", range: {} });
+    expect(r.mau).toBe(1);
+  });
+
+  it("excludes subjects last-seen before the WAU/MAU cutoffs", async () => {
+    const t = initConvexTest();
+    const now = Date.now();
+    const old = now - 45 * 86400000;
+    await seed(t, [{ ts: old, subjectRef: "old" }]);
+    const r = await t.query(api.queries.uniques, {
+      scope: "default", granularity: "day", range: { from: old - 1000, to: now },
+    });
+    expect(r.mau).toBe(0);
+    expect(r.wau).toBe(0);
+    expect(r.trend).toHaveLength(1);
+  });
+});
+
+describe("funnel", () => {
+  it("computes ordered step conversion keyed by subjectRef", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { name: "visit", subjectRef: "u1", ts: D(1, 1) },
+      { name: "visit", subjectRef: "u2", ts: D(1, 1) },
+      { name: "signup", subjectRef: "u1", ts: D(1, 2) },
+    ]);
+    const r = await t.query(api.queries.funnel, {
+      scope: "default", steps: ["visit", "signup"], range: { from: D(1, 0), to: D(2) },
+    });
+    expect(r[0]).toEqual({ name: "visit", count: 2, rate: 1 });
+    expect(r[1]).toEqual({ name: "signup", count: 1, rate: 0.5 });
+  });
+
+  it("ignores out-of-order step completions", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { name: "a", subjectRef: "u1", ts: D(2) },
+      { name: "b", subjectRef: "u1", ts: D(1) },
+    ]);
+    const r = await t.query(api.queries.funnel, {
+      scope: "default", steps: ["a", "b"], range: { from: D(1), to: D(3) },
+    });
+    expect(r[1]!.count).toBe(0);
+  });
+
+  it("throws with fewer than 2 steps", async () => {
+    const t = initConvexTest();
+    await expect(
+      t.query(api.queries.funnel, { scope: "default", steps: ["only"], range: {} }),
+    ).rejects.toThrow(/at least 2 steps/);
+  });
+
+  it("defaults the range when omitted and skips events without subjectRef", async () => {
+    const t = initConvexTest();
+    const now = Date.now();
+    await seed(t, [
+      { name: "a", subjectRef: "u1", ts: now - 1000 },
+      { name: "a", ts: now - 1000 },
+      { name: "b", subjectRef: "u1", ts: now },
+    ]);
+    const r = await t.query(api.queries.funnel, {
+      scope: "default", steps: ["a", "b"], range: {},
+    });
+    expect(r[0]!.count).toBe(1);
+    expect(r[1]!.count).toBe(1);
+  });
+
+  it("keeps the earliest timestamp per subject for a step", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { name: "a", subjectRef: "u1", ts: D(2) },
+      { name: "a", subjectRef: "u1", ts: D(1) },
+      { name: "b", subjectRef: "u1", ts: D(1, 12) },
+    ]);
+    const r = await t.query(api.queries.funnel, {
+      scope: "default", steps: ["a", "b"], range: { from: D(1, 0), to: D(3) },
+    });
+    expect(r[1]!.count).toBe(1);
+  });
+
+  it("reports rate 0 for all steps when the first step has no subjects", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ name: "b", subjectRef: "u1", ts: D(1) }]);
+    const r = await t.query(api.queries.funnel, {
+      scope: "default", steps: ["a", "b"], range: { from: D(1, 0), to: D(3) },
+    });
+    expect(r[0]).toEqual({ name: "a", count: 0, rate: 1 });
+    expect(r[1]).toEqual({ name: "b", count: 0, rate: 0 });
+  });
+});
+
+describe("retention", () => {
+  it("groups cohorts by first-seen period and computes return rates", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(1), subjectRef: "u1" }]);
+    await seed(t, [{ ts: D(2), subjectRef: "u1" }]);
+    const r = await t.query(api.queries.retention, {
+      scope: "default", cohortRange: { from: D(1), to: D(3) }, periods: 2, granularity: "day",
+    });
+    expect(r).toHaveLength(1);
+    expect(r[0]!.size).toBe(1);
+    expect(r[0]!.retained[0]).toBe(1);
+  });
+
+  it("defaults granularity to day and clamps the from bound", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(1), subjectRef: "u1" }]);
+    const r = await t.query(api.queries.retention, {
+      scope: "default", cohortRange: { to: D(2) }, periods: 1,
+    });
+    expect(r.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("defaults the to bound to now when omitted", async () => {
+    const t = initConvexTest();
+    const now = Date.now();
+    await seed(t, [{ ts: now - 2 * 86400000, subjectRef: "u1" }]);
+    const r = await t.query(api.queries.retention, {
+      scope: "default", cohortRange: { from: now - 5 * 86400000 }, periods: 2,
+    });
+    expect(r.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("list", () => {
+  it("paginates raw events newest-first", async () => {
+    const t = initConvexTest();
+    await seed(t, [{ ts: D(1) }, { ts: D(2) }, { ts: D(3) }]);
+    const first = await t.query(api.queries.list, {
+      scope: "default", name: "view", paginationOpts: { numItems: 2, cursor: null },
+    });
+    expect(first.page).toHaveLength(2);
+    expect(first.isDone).toBe(false);
+    expect(first.page[0]!.ts).toBeGreaterThan(first.page[1]!.ts);
+
+    const second = await t.query(api.queries.list, {
+      scope: "default", name: "view",
+      paginationOpts: { numItems: 2, cursor: first.continueCursor },
+    });
+    expect(second.page).toHaveLength(1);
+    expect(second.isDone).toBe(true);
+  });
+
+  it("returns the full event view shape including optional fields", async () => {
+    const t = initConvexTest();
+    await t.mutation(api.mutations.track, {
+      scope: "default", name: "view", subjectRef: "u1", sessionRef: "s1",
+      props: { a: "b" }, ts: D(1), dedupeKey: "dk", dimensions: [], granularities: ["day"],
+    });
+    const page = await t.query(api.queries.list, {
+      scope: "default", name: "view", paginationOpts: { numItems: 10, cursor: null },
+    });
+    const e = page.page[0]!;
+    expect(e.subjectRef).toBe("u1");
+    expect(e.sessionRef).toBe("s1");
+    expect(e.dedupeKey).toBe("dk");
+    expect(e.props).toEqual({ a: "b" });
+    expect(typeof e._id).toBe("string");
+  });
+});
+
+describe("configGet", () => {
+  it("returns a stored value and null for an unknown key", async () => {
+    const t = initConvexTest();
+    await t.mutation(api.mutations.configSet, { scope: "s", key: "k", value: "v" });
+    expect(await t.query(api.queries.configGet, { scope: "s", key: "k" })).toBe("v");
+    expect(await t.query(api.queries.configGet, { scope: "s", key: "nope" })).toBeNull();
   });
 });

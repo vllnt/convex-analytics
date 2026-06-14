@@ -1,111 +1,76 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { propertiesValidator, dimensionsValidator, allowedPropertiesValidator } from "./validators.js";
+import { propsValidator, granularityValidator } from "./validators.js";
 
+/**
+ * Generic, domain-neutral analytics schema. Zero hardcoded web fields, zero `v.any()`.
+ *
+ * - `events` — raw event log (TTL-pruned).
+ * - `rollups` — rollup-on-write counts per (scope, name, granularity, bucket, dim, val).
+ * - `subjects` — per-subject lifecycle for uniques/retention.
+ * - `sessions` — optional generic session aggregates for idle-close + session reads.
+ * - `config` — cron-relevant config (retention/sampling) keyed by scope.
+ */
 export default defineSchema({
   events: defineTable({
-    userId: v.string(),
-    sessionId: v.string(),
+    scope: v.string(),
     name: v.string(),
-    projectId: v.string(),
-    env: v.string(),
-    platform: v.string(),
-    properties: propertiesValidator,
-    timestamp: v.number(),
-    path: v.string(),
-    locale: v.string(),
-    referrer: v.string(),
-    device: v.string(),
-    browser: v.string(),
-    os: v.string(),
-    country: v.string(),
-    region: v.optional(v.string()),
-    city: v.optional(v.string()),
-    utmSource: v.optional(v.string()),
-    utmMedium: v.optional(v.string()),
-    utmCampaign: v.optional(v.string()),
-    seqNum: v.number(),
+    subjectRef: v.optional(v.string()),
+    sessionRef: v.optional(v.string()),
+    props: propsValidator,
+    ts: v.number(),
+    seq: v.number(),
+    dedupeKey: v.optional(v.string()),
   })
-    .index("by_name_time", ["name", "timestamp"])
-    .index("by_user_time", ["userId", "timestamp"])
-    .index("by_session", ["sessionId", "timestamp"])
-    .index("by_name_path", ["name", "path", "timestamp"])
-    .index("by_name_locale", ["name", "locale", "timestamp"])
-    .index("by_name_device", ["name", "device", "timestamp"])
-    .index("by_name_referrer", ["name", "referrer", "timestamp"])
-    .index("by_name_country", ["name", "country", "timestamp"])
-    .index("by_name_browser", ["name", "browser", "timestamp"])
-    .index("by_name_os", ["name", "os", "timestamp"])
-    .index("by_project_name", ["projectId", "name", "timestamp"])
-    .index("by_project_env", ["projectId", "env", "timestamp"]),
+    .index("by_scope_name_ts", ["scope", "name", "ts"])
+    .index("by_scope_subject_ts", ["scope", "subjectRef", "ts"])
+    .index("by_scope_session_ts", ["scope", "sessionRef", "ts"])
+    .index("by_dedupe", ["scope", "dedupeKey"]),
 
-  sessions: defineTable({
-    userId: v.string(),
-    sessionId: v.string(),
-    projectId: v.string(),
-    env: v.string(),
-    platform: v.string(),
-    startTime: v.number(),
-    endTime: v.optional(v.number()),
-    eventCount: v.number(),
-    entryPath: v.string(),
-    exitPath: v.string(),
-    referrer: v.string(),
-    device: v.string(),
-    browser: v.string(),
-    os: v.string(),
-    locale: v.string(),
-    country: v.string(),
-    duration: v.optional(v.number()),
+  rollups: defineTable({
+    scope: v.string(),
+    name: v.string(),
+    granularity: granularityValidator,
+    bucket: v.number(),
+    dim: v.string(),
+    val: v.string(),
+    count: v.number(),
   })
-    .index("by_user", ["userId", "startTime"])
-    .index("by_time", ["startTime"])
-    .index("by_session", ["sessionId"]),
+    .index("by_scope_name_gran_bucket_dim", [
+      "scope",
+      "name",
+      "granularity",
+      "bucket",
+      "dim",
+      "val",
+    ])
+    .index("by_scope_name_dim_val", ["scope", "name", "dim", "val"]),
 
-  users: defineTable({
-    visitorId: v.string(),
-    projectIds: v.array(v.string()),
+  subjects: defineTable({
+    scope: v.string(),
+    subjectRef: v.string(),
     firstSeen: v.number(),
     lastSeen: v.number(),
-    sessionCount: v.number(),
-    totalEvents: v.number(),
-    device: v.string(),
-    browser: v.string(),
-    os: v.string(),
-    locale: v.string(),
-    country: v.string(),
+    eventCount: v.number(),
   })
-    .index("by_visitor", ["visitorId"])
-    .index("by_firstSeen", ["firstSeen"])
-    .index("by_lastSeen", ["lastSeen"]),
+    .index("by_scope_subject", ["scope", "subjectRef"])
+    .index("by_scope_firstSeen", ["scope", "firstSeen"]),
 
-  daily_rollups: defineTable({
-    name: v.string(),
-    projectId: v.string(),
-    env: v.string(),
-    date: v.string(),
-    count: v.number(),
-    uniqueUsers: v.number(),
-    dimensions: dimensionsValidator,
+  sessions: defineTable({
+    scope: v.string(),
+    sessionRef: v.string(),
+    subjectRef: v.optional(v.string()),
+    startTs: v.number(),
+    endTs: v.optional(v.number()),
+    lastTs: v.number(),
+    eventCount: v.number(),
   })
-    .index("by_name_date", ["name", "date"])
-    .index("by_project_date", ["projectId", "name", "date"])
-    .index("by_date", ["date"]),
-
-  event_schemas: defineTable({
-    name: v.string(),
-    allowedProperties: allowedPropertiesValidator,
-  }).index("by_name", ["name"]),
+    .index("by_scope_session", ["scope", "sessionRef"])
+    .index("by_scope_lastTs", ["scope", "lastTs"]),
 
   config: defineTable({
+    scope: v.string(),
     key: v.string(),
     value: v.string(),
-  }).index("by_key", ["key"]),
-
-  archives: defineTable({
-    date: v.string(),
-    fileId: v.id("_storage"),
-    eventCount: v.number(),
-    sizeBytes: v.number(),
-  }).index("by_date", ["date"]),
+  }).index("by_scope_key", ["scope", "key"]),
 });

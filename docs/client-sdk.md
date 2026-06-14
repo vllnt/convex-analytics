@@ -1,226 +1,177 @@
 # Client SDK
 
-TypeScript API reference for the `ConvexAnalytics<T>` class.
+TypeScript API reference for the `AnalyticsClient<TProps>` class.
 
-Source: `packages/convex-analytics/src/client.ts`
+Source: `packages/convex-analytics/src/client/index.ts`
 
 ## Constructor
 
-```typescript
-new ConvexAnalytics(component: unknown, config?: ConvexAnalyticsConfig)
+```ts
+new AnalyticsClient<TProps>(component: unknown, config?: AnalyticsConfig)
 ```
 
-The `component` argument comes from `components.analytics` after mounting.
+`component` comes from `components.analytics` after mounting. `TProps` types the `props`
+passed to `track` (defaults to `Record<string, Scalar>`).
 
-### ConvexAnalyticsConfig
+### AnalyticsConfig
 
-```typescript
-interface ConvexAnalyticsConfig {
-  retentionDays?: number;
-  rateLimitPerMin?: number;
-  apiKeys?: string[];
+Stored on the client and applied to every call. All optional.
+
+```ts
+interface AnalyticsConfig {
+  scope?: string;            // default "default"
+  dimensions?: string[];     // default []
+  granularities?: ("hour" | "day")[]; // default ["day"]
+  retentionDays?: number;    // default 90
+  sampleRate?: number;       // 0..1, default 1
+  sessionIdleMs?: number;    // default 1_800_000 (30m)
 }
 ```
 
-## Typed vs Untyped Usage
+| Option | Default | Applied | Purpose |
+|--------|---------|---------|---------|
+| `scope` | `"default"` | per call | Multi-tenant partition. Overridable per call via `opts.scope`. |
+| `dimensions` | `[]` | per `track` | Prop keys to roll up on. Empty = count by event name only. |
+| `granularities` | `["day"]` | per `track` | Rollup bucket sizes. |
+| `retentionDays` | `90` | via `configure` | Raw-event TTL in days. Rollups kept forever. |
+| `sampleRate` | `1` | per `track` | Fraction of events kept at ingest. |
+| `sessionIdleMs` | `1_800_000` | via `configure` | Idle timeout before a session is closed. |
 
-**Untyped** -- accepts any event name and any properties object:
+`dimensions`, `granularities`, and `sampleRate` are passed into each `track` call. The
+cron-relevant values (`retentionDays`, `sampleRate`, `sessionIdleMs`) are persisted to the
+`config` table by calling `configure` once.
 
-```typescript
-const analytics = new ConvexAnalytics(components.analytics);
-await analytics.track(ctx, userId, sessionId, "anything", { any: "props" });
-```
-
-**Typed** -- compile-time enforcement of event names and property shapes:
-
-```typescript
-type MyEvents = {
-  signup: { plan: "free" | "pro" };
-  page_view: { path: string };
-  purchase: { amount: number; currency: string };
-};
-
-const analytics = new ConvexAnalytics<MyEvents>(components.analytics);
-
-// OK
-await analytics.track(ctx, userId, sessionId, "signup", { plan: "pro" });
-
-// Type error: "unknown_event" is not a key of MyEvents
-await analytics.track(ctx, userId, sessionId, "unknown_event", {});
-
-// Type error: plan must be "free" | "pro"
-await analytics.track(ctx, userId, sessionId, "signup", { plan: "enterprise" });
-```
-
-## Methods
+## Mutations
 
 ### track
 
-```typescript
-async track<K extends keyof TEvents & string>(
+```ts
+track(
   ctx: MutationCtx,
-  userId: string,
-  sessionId: string,
-  name: K,
-  properties?: TEvents[K],
-  metadata?: TrackMetadata,
+  name: string,
+  opts?: {
+    subjectRef?: string;
+    sessionRef?: string;
+    props?: TProps;
+    ts?: number;
+    scope?: string;
+    dedupeKey?: string;
+  },
+): Promise<"tracked" | "dropped" | "duplicate">
+```
+
+Ingest one event. Rollup-on-write: increments the total + each host-declared dimension
+present in `props`, writes the raw event, and bumps the sharded counter and aggregate.
+
+- **Rate limit** — when `sessionRef` is set, a per-session token bucket applies; over-limit returns `"dropped"`.
+- **Sampling** — when `sampleRate < 1`, a fraction of events return `"dropped"`.
+- **Dedupe** — when `dedupeKey` is set and an event already exists for it in the scope, returns `"duplicate"`.
+- Otherwise returns `"tracked"`.
+
+### configure
+
+```ts
+configure(
+  ctx: MutationCtx,
+  opts?: {
+    retentionDays?: number;
+    sampleRate?: number;
+    sessionIdleMs?: number;
+    scope?: string;
+  },
 ): Promise<void>
 ```
 
-Core event ingestion. Writes an event record, updates the sharded counter, and manages session lifecycle.
+Persist cron-relevant config for the scope so the `prune` and `closeSessions` crons can read
+it. Falls back to the client's constructor config when an option is omitted.
 
-- `K` is constrained to event names in `TEvents` when typed.
-- `properties` are validated against `event_schemas` if a schema is registered for the event name. Unknown properties are silently dropped; type mismatches are silently dropped.
-- Event names must match `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`.
-- Rate-limited per sessionId (100/min, burst 10). Excess events are silently dropped.
+## Queries
 
-### identify
+### metric
 
-```typescript
-async identify(
-  ctx: MutationCtx,
-  userId: string,
-  traits?: Record<string, unknown>,
-): Promise<void>
+```ts
+metric(ctx, name, opts?: { range?: Range; where?: Where; scope?: string }): Promise<number>
 ```
 
-Update user profile traits (device, browser, os, locale, country, etc.). No-op if the userId does not exist yet.
+Total count for an event. With no `range`/`where`, reads the O(1) sharded counter. With a
+range or a `where` filter, sums the matching daily rollup rows.
 
-### alias
+### top
 
-```typescript
-async alias(
-  ctx: MutationCtx,
-  anonymousId: string,
-  identifiedId: string,
-): Promise<void>
+```ts
+top(ctx, name, dimension, opts?: { range?: Range; limit?: number; scope?: string }): Promise<TopRow[]>
 ```
 
-Merge an anonymous user into an identified user:
+Top values of a dimension, ranked by count (default `limit` 20, max 100). Returns
+`{ value, count }[]`.
 
-- Reassigns all events and sessions from `anonymousId` to `identifiedId` (paginated, 500/batch).
-- Merges user records: `firstSeen` takes min, `lastSeen` takes max, counts are summed.
-- Self-alias (same ID for both) is a no-op.
+### timeseries
 
-### count
-
-```typescript
-async count(
-  ctx: QueryCtx,
-  name: keyof TEvents & string,
-  opts?: QueryOpts,
-): Promise<number>
+```ts
+timeseries(ctx, name, opts: { granularity: Granularity; range: Range; where?: Where; scope?: string }): Promise<TimeseriesPoint[]>
 ```
 
-Returns the event count for a given event name.
+Bucketed counts. Returns `{ bucket, count }[]` sorted ascending by bucket.
 
-- Without time bounds: uses the sharded counter (O(shards), not O(n)).
-- With `from`/`to`: uses daily rollups for the bounded range.
+### uniques
+
+```ts
+uniques(ctx, opts: { range: Range; granularity: Granularity; scope?: string }): Promise<UniquesView>
+```
+
+Distinct-subject counts. Returns `{ dau, wau, mau, trend }` where `trend` is
+`{ bucket, uniques }[]`.
+
+### funnel
+
+```ts
+funnel(ctx, steps: string[], opts: { range: Range; scope?: string }): Promise<FunnelStep[]>
+```
+
+Ordered step conversion, keyed by `subjectRef`. Requires at least 2 steps; scans up to
+10,000 events per step. Returns `{ name, count, rate }[]` (rate relative to the first step).
+
+### retention
+
+```ts
+retention(ctx, opts: { cohortRange: Range; periods: number; granularity?: Granularity; scope?: string }): Promise<RetentionCohort[]>
+```
+
+Cohort return rates by first-seen period (default `granularity` `"day"`, `periods` capped at
+30). Returns `{ cohort, size, retained }[]` where `retained[p]` is the return fraction for
+period `p+1`.
 
 ### list
 
-```typescript
-async list(
-  ctx: QueryCtx,
-  name: keyof TEvents & string,
-  opts?: PaginationOpts,
-): Promise<PaginatedResult<unknown>>
+```ts
+list(ctx, name, paginationOpts: { numItems: number; cursor: string | null }, opts?: { scope?: string }): Promise<EventPage>
 ```
 
-Paginated event listing. Supports scoping by `projectId`, `env`, and `platform`.
-
-### summary
-
-```typescript
-async summary(
-  ctx: QueryCtx,
-  opts?: { projectId?: string },
-): Promise<SummaryItem[]>
-```
-
-Returns all event names with their counts, sorted descending. Optionally scoped to a `projectId`.
-
-### debug
-
-```typescript
-debug(enabled: boolean): void
-```
-
-Enable or disable console logging of `track()` calls. Useful during development.
+Paginated raw events for an event name, newest first. Returns
+`{ page, isDone, continueCursor }`.
 
 ## Types
 
-### TrackMetadata
+```ts
+type Scalar = string | number | boolean | null;
+type Props = Record<string, Scalar>;
+type Granularity = "hour" | "day";
 
-All fields are optional.
-
-| Field | Type | Default |
-|-------|------|---------|
-| projectId | `string` | `"default"` |
-| env | `string` | `"default"` |
-| platform | `string` | `"default"` |
-| timestamp | `number` | `Date.now()` |
-| path | `string` | `"unknown"` |
-| locale | `string` | `"unknown"` |
-| referrer | `string` | `""` |
-| device | `string` | `"unknown"` |
-| browser | `string` | `"unknown"` |
-| os | `string` | `"unknown"` |
-| country | `string` | `"unknown"` |
-| region | `string \| null` | -- |
-| city | `string \| null` | -- |
-| utmSource | `string \| null` | -- |
-| utmMedium | `string \| null` | -- |
-| utmCampaign | `string \| null` | -- |
-
-### Dimension
-
-Union type used for breakdown queries:
-
-```typescript
-type Dimension =
-  | "locale" | "path" | "device" | "browser" | "os"
-  | "country" | "referrer" | "utmSource" | "utmMedium"
-  | "utmCampaign" | "projectId" | "env" | "platform";
-```
-
-### QueryOpts
-
-```typescript
-interface QueryOpts {
-  from?: number;    // epoch ms
-  to?: number;      // epoch ms
-  projectId?: string;
-  env?: string;
-  platform?: string;
-  compare?: "previous_period";
+interface Range { from?: number; to?: number; }          // epoch ms
+interface Where { dim: string; val: Scalar; }            // one dimension == one value
+interface TopRow { value: string; count: number; }
+interface TimeseriesPoint { bucket: number; count: number; }
+interface UniquesView {
+  dau: number; wau: number; mau: number;
+  trend: Array<{ bucket: number; uniques: number }>;
 }
-```
-
-### PaginationOpts
-
-```typescript
-interface PaginationOpts extends QueryOpts {
-  limit?: number;   // max 100, default 50
-  cursor?: string;
+interface FunnelStep { name: string; count: number; rate: number; }
+interface RetentionCohort { cohort: number; size: number; retained: number[]; }
+interface EventView {
+  _id: string; _creationTime: number;
+  scope: string; name: string;
+  subjectRef?: string; sessionRef?: string;
+  props: Props; ts: number; seq: number; dedupeKey?: string;
 }
-```
-
-### PaginatedResult
-
-```typescript
-interface PaginatedResult<T> {
-  data: T[];
-  hasMore: boolean;
-  cursor: string | null;
-}
-```
-
-### SummaryItem
-
-```typescript
-interface SummaryItem {
-  name: string;
-  count: number;
-}
+interface EventPage { page: EventView[]; isDone: boolean; continueCursor: string; }
 ```

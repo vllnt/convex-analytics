@@ -6,23 +6,41 @@
 
 # @vllnt/convex-analytics
 
-API-first analytics engine for Convex — events, sessions, funnels, retention, and a REST + MCP surface, with zero bundle size and zero external services.
+A generic, configurable, embedded analytics component for Convex — any event,
+any dimension, any domain — with rollup-on-write so reads stay O(1).
 
 ```ts
-const analytics = new ConvexAnalytics(components.analytics);
-await analytics.track(ctx, userId, sessionId, "signup", { plan: "pro" }); // server-side, zero bundle
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { components } from "./_generated/api";
+
+const analytics = new AnalyticsClient(components.analytics, {
+  dimensions: ["plan", "country"], // prop keys to roll up on
+});
+
+await analytics.track(ctx, "signup", { subjectRef: userId, props: { plan: "pro", country: "FR" } });
+const byPlan = await analytics.top(ctx, "signup", "plan"); // [{ value: "pro", count: 1 }]
 ```
 
 ## Features
 
-- **Events** — track custom events with typed properties, geo, device, UTM.
-- **Sessions** — auto-created, 30min inactivity timeout, entry/exit paths.
-- **Users** — anonymous identity, `identify()` traits, `alias()` merge.
-- **Funnels & retention** — ordered step conversion + cohort-by-firstSeen return rates.
-- **Time-series & breakdowns** — daily/weekly/monthly rollups; by locale, country, device, OS, path, referrer.
-- **Attribution & lifecycle** — traffic source → conversion; new / returning / dormant / resurrected; DAU/MAU stickiness.
-- **MCP tools** — 12 tools for AI-native analytics via Claude Code.
-- **Multi-product** — `projectId` + `env` + `platform` scoping on every query.
+- **Generic events** — free-string event name, opaque `subjectRef` / `sessionRef`, host-typed `props`.
+- **Host-declared dimensions** — you pass the prop keys to roll up on; nothing is hardcoded.
+- **Rollup-on-write** — counts are incremented as events land, so `metric` / `top` / `timeseries` read in O(1) (backed by `@convex-dev/aggregate` + `@convex-dev/sharded-counter`).
+- **Rich verb set** — `metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, plus paginated raw `list`.
+- **Configurable** — `scope`, `dimensions`, `granularities`, `retentionDays`, `sampleRate`, `propsValidator`; sensible defaults, zero config required.
+- **Per-session rate limiting + dedupe + sampling** built into `track`.
+- **Opt-in web preset** — `@vllnt/convex-analytics/web` adds web dimensions + UA/geo helpers when you want them.
+- **Optional React hooks** — `@vllnt/convex-analytics/react` for reactive aggregate reads.
+- **Zero hardcoded domain** — no `v.any()`, no baked-in web fields; the host owns meaning and auth.
+
+## Generic core vs web preset
+
+The core is domain-neutral: it knows nothing about web, mobile, or any vertical.
+Web analytics — pageview dimensions (`path`, `referrer`, `device`, `browser`, `os`,
+`country`, UTM) plus `parseUserAgent` / `geoFromHeaders` / `trackPageview` helpers —
+lives in the opt-in `@vllnt/convex-analytics/web` preset. You turn it on by passing
+`webDimensions` to the client's `dimensions` config; otherwise the core ships no web
+fields. See [docs/web-preset.md](docs/web-preset.md).
 
 ## Installation
 
@@ -43,33 +61,86 @@ export default app;
 ```
 
 ```ts
-// Track events (server-side — zero bundle size)
-import { ConvexAnalytics } from "@vllnt/convex-analytics";
+// convex/analytics.ts — track + read, server-side
+import { AnalyticsClient } from "@vllnt/convex-analytics";
 import { components } from "./_generated/api";
 
-const analytics = new ConvexAnalytics(components.analytics);
+type MyProps = { plan?: string; country?: string };
 
-// Untyped (zero friction):
-await analytics.track(ctx, userId, sessionId, "signup", { plan: "pro" });
+const analytics = new AnalyticsClient<MyProps>(components.analytics, {
+  dimensions: ["plan", "country"],
+  granularities: ["day"],
+});
 
-// Typed (compile-time safety):
-type MyEvents = {
-  signup: { plan: "free" | "pro" };
-  purchase: { amount: number; currency: string };
-};
-const typed = new ConvexAnalytics<MyEvents>(components.analytics);
-await typed.track(ctx, userId, sessionId, "signup", { plan: "pro" });
-// typed.track(ctx, id, sid, "typo") → compile error
+await analytics.track(ctx, "signup", { subjectRef: userId, props: { plan: "pro" } });
+const total = await analytics.metric(ctx, "signup");
 ```
 
-## API Reference
+## Config
 
-The client `ConvexAnalytics<T>` exposes `track`, `identify`, and `alias`; reads run through 18 query
-functions and a REST surface of 24 `x-api-key`-authed HTTP endpoints (ingest, events/count/summary,
-timeseries, funnel, retention, breakdown, attribution, uniques, lifecycle, stickiness, live, search,
-user/session, GDPR delete). All GET endpoints accept `?projectId=X&env=Y&platform=Z` scoping.
+Passed to the `AnalyticsClient` constructor. All optional — the defaults work with zero config.
 
-Full reference: [docs/api-reference.md](docs/api-reference.md) (REST) · [docs/client-sdk.md](docs/client-sdk.md) (client SDK).
+| Option | Type | Default | Purpose |
+|--------|------|---------|---------|
+| `scope` | `string` | `"default"` | Multi-tenant partition; isolates one tenant's data. |
+| `dimensions` | `string[]` | `[]` | Prop keys to roll up on (drives rollup-on-write). Empty = count by event name only. |
+| `granularities` | `("hour" \| "day")[]` | `["day"]` | Rollup bucket sizes. |
+| `retentionDays` | `number` | `90` | Raw-event TTL in days (rollups are kept forever). Applied via `configure`. |
+| `sampleRate` | `number` | `1` | Fraction `0..1` of events to keep at ingest. |
+| `sessionIdleMs` | `number` | `1800000` | Idle timeout before a session is closed. Applied via `configure`. |
+| `propsValidator` | Convex validator | typed scalar record | Optional host validator narrowing `props` at the boundary. |
+
+`scope`, `dimensions`, `granularities`, and `sampleRate` apply per call from the client.
+`retentionDays`, `sampleRate`, and `sessionIdleMs` are persisted for the prune/close-sessions
+crons by calling `analytics.configure(ctx, { ... })` once.
+
+## API
+
+| Verb | Kind | Purpose |
+|------|------|---------|
+| `track(ctx, name, opts)` | mutation | Ingest an event; rollup-on-write + raw event + counter. Returns `"tracked" \| "dropped" \| "duplicate"`. |
+| `metric(ctx, name, opts)` | query | Total count over a range, optionally filtered by a dimension value. |
+| `top(ctx, name, dimension, opts)` | query | Top values of a dimension (breakdown). |
+| `timeseries(ctx, name, opts)` | query | Bucketed counts over a range. |
+| `uniques(ctx, opts)` | query | DAU / WAU / MAU from subjects. |
+| `funnel(ctx, steps, opts)` | query | Ordered step conversion, keyed by `subjectRef`. |
+| `retention(ctx, opts)` | query | Cohort return rates by first-seen period. |
+| `list(ctx, name, paginationOpts, opts)` | query | Paginated raw events, newest first. |
+| `configure(ctx, opts)` | mutation | Persist cron-relevant config (retention / sampling / idle). |
+
+Full reference: [docs/client-sdk.md](docs/client-sdk.md). REST surface: [docs/api-reference.md](docs/api-reference.md).
+
+## Web preset
+
+```ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { webDimensions, trackPageview } from "@vllnt/convex-analytics/web";
+
+const analytics = new AnalyticsClient(components.analytics, { dimensions: webDimensions });
+
+await trackPageview(analytics, ctx, {
+  path: "/pricing",
+  ua: request.headers.get("user-agent") ?? undefined,
+  headers: request.headers,
+});
+```
+
+`webDimensions` opts the rollups into `path` / `referrer` / `device` / `browser` / `os` /
+`country` / UTM; `parseUserAgent` and `geoFromHeaders` build those props from a request.
+See [docs/web-preset.md](docs/web-preset.md).
+
+## React
+
+```tsx
+import { useMetric, useTop } from "@vllnt/convex-analytics/react";
+import { api } from "../convex/_generated/api";
+
+const signups = useMetric(api.analytics.metric, { name: "signup" });
+const byPlan = useTop(api.analytics.top, { name: "signup", dimension: "plan" });
+```
+
+Thin reactive wrappers over the host's re-exported query refs (`metric`, `top`, `timeseries`,
+`uniques`). `react` + `convex` are optional peer deps; backend-only consumers pull no React.
 
 ## MCP (Claude Code)
 
@@ -79,41 +150,36 @@ claude mcp add convex-analytics-mcp \
   --env ANALYTICS_API_KEY=your-key
 ```
 
-Then ask Claude Code: "How are signups trending?", "Show me the onboarding funnel", "What's our DAU/MAU
-ratio?". 12 tools: `get_timeseries`, `get_funnel`, `get_retention`, `get_breakdown`, `get_attribution`,
-`get_user_journey`, `get_session`, `get_live`, `compare_periods`, `get_stickiness`, `detect_anomalies`,
+7 tools: `track`, `get_metric`, `get_top`, `get_timeseries`, `get_uniques`, `detect_anomalies`,
 `query_analytics` (NL router). See [docs/mcp-tools.md](docs/mcp-tools.md).
 
 ## Security
 
-- Auth-agnostic mount; REST endpoints require an `x-api-key` header, validated with timing-safe comparison.
-- Tables sandboxed — the host reaches them only through the exported functions.
-- Event names are validated and unknown/mismatched properties are dropped per the event schema.
+- Auth-agnostic mount — the host gates access and passes opaque `subjectRef` / `sessionRef` in.
+- Tables are sandboxed; the host reaches them only through the exported functions.
+- REST endpoints require an `x-api-key` header, compared timing-safe.
 
 See [docs/architecture.md](docs/architecture.md).
 
 ## Testing
 
 ```bash
-pnpm test  # runs all tests across packages
+pnpm test
 ```
 
 ```ts
 import analyticsTest from "@vllnt/convex-analytics/test";
 import { convexTest } from "convex-test";
 
-function initTest() {
-  const t = convexTest();
-  analyticsTest.register(t);
-  return t;
-}
+const t = convexTest(hostSchema, hostModules);
+analyticsTest.register(t);
 ```
 
 ## Documentation
 
-Full docs in [`docs/`](docs/): [Quick Start](docs/quick-start.md) · [Client SDK](docs/client-sdk.md) ·
-[Schema](docs/schema.md) · [REST API](docs/api-reference.md) · [Architecture](docs/architecture.md) ·
-[MCP Tools](docs/mcp-tools.md) · [Multi-Product](docs/multi-product.md). For AI agents:
+[Schema](docs/schema.md) · [Client SDK](docs/client-sdk.md) · [REST API](docs/api-reference.md) ·
+[Web Preset](docs/web-preset.md) · [Multi-Product](docs/multi-product.md) ·
+[Architecture](docs/architecture.md) · [MCP Tools](docs/mcp-tools.md). For AI agents:
 [`llms.txt`](llms.txt) · [`llms-full.txt`](llms-full.txt).
 
 ## Contributing

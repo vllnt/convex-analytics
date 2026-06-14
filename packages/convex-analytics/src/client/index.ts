@@ -1,185 +1,238 @@
-import type { GenericMutationCtx, GenericQueryCtx, GenericDataModel } from "convex/server";
-import { createConvexLogger } from "@vllnt/logger/convex";
+import type {
+  GenericMutationCtx,
+  GenericQueryCtx,
+  GenericDataModel,
+} from "convex/server";
+import type {
+  AnalyticsConfig,
+  Props,
+  Granularity,
+  Range,
+  Where,
+  TrackOpts,
+  TrackResult,
+  TopRow,
+  TimeseriesPoint,
+  UniquesView,
+  FunnelStep,
+  RetentionCohort,
+  PaginationOpts,
+  EventPage,
+} from "./types.js";
 
-const logger = createConvexLogger("convex-analytics", "debug");
+export type {
+  AnalyticsConfig,
+  Range,
+  Where,
+  TrackOpts,
+  TrackResult,
+  TopRow,
+  TimeseriesPoint,
+  UniquesView,
+  FunnelStep,
+  RetentionCohort,
+  PaginationOpts,
+  EventPage,
+  EventView,
+} from "./types.js";
+export type { Scalar, Props, Granularity } from "../shared.js";
 
-export interface ConvexAnalyticsConfig {
-  retentionDays?: number;
-  rateLimitPerMin?: number;
-  apiKeys?: string[];
-}
-
-export interface TrackMetadata {
-  projectId?: string;
-  env?: string;
-  platform?: string;
-  timestamp?: number;
-  path?: string;
-  locale?: string;
-  referrer?: string;
-  device?: string;
-  browser?: string;
-  os?: string;
-  country?: string;
-  region?: string | null;
-  city?: string | null;
-  utmSource?: string | null;
-  utmMedium?: string | null;
-  utmCampaign?: string | null;
-}
-
-export type Dimension =
-  | "locale"
-  | "path"
-  | "device"
-  | "browser"
-  | "os"
-  | "country"
-  | "referrer"
-  | "utmSource"
-  | "utmMedium"
-  | "utmCampaign"
-  | "projectId"
-  | "env"
-  | "platform";
-
-export type DefaultEventMap = Record<string, Record<string, unknown>>;
-
-interface PaginatedResult<T> {
-  data: T[];
-  hasMore: boolean;
-  cursor: string | null;
-}
-
-interface SummaryItem {
-  name: string;
-  count: number;
-}
-
-interface QueryOpts {
-  from?: number;
-  to?: number;
-  projectId?: string;
-  env?: string;
-  platform?: string;
-  compare?: "previous_period";
-}
-
-interface PaginationOpts extends QueryOpts {
-  limit?: number;
-  cursor?: string;
-}
-
-type MutationCtx = { runMutation: GenericMutationCtx<GenericDataModel>["runMutation"] };
+type MutationCtx = {
+  runMutation: GenericMutationCtx<GenericDataModel>["runMutation"];
+};
 type QueryCtx = { runQuery: GenericQueryCtx<GenericDataModel>["runQuery"] };
 
+interface ComponentApi {
+  mutations: {
+    track: unknown;
+    configure: unknown;
+    configSet: unknown;
+  };
+  queries: {
+    metric: unknown;
+    top: unknown;
+    timeseries: unknown;
+    uniques: unknown;
+    funnel: unknown;
+    retention: unknown;
+    list: unknown;
+    configGet: unknown;
+  };
+}
+
+const DEFAULT_SCOPE = "default";
+
 /**
- * ConvexAnalytics — typed client wrapper for the analytics component.
+ * AnalyticsClient — typed, configurable wrapper over the analytics component.
  *
- * Untyped (default — zero friction):
- *   `const analytics = new ConvexAnalytics(component)`
+ * Generic over the host's props shape `TProps` for compile-time typing of
+ * `track`. Config (`scope`, `dimensions`, `granularities`, ...) is stored on
+ * the client and applied to every call — not ignored.
  *
- * Typed (opt-in — compile-time safety):
- *   `const analytics = new ConvexAnalytics<MyEvents>(component)`
+ * @example
+ * ```ts
+ * const analytics = new AnalyticsClient(components.analytics, {
+ *   dimensions: ["plan", "source"],
+ *   granularities: ["hour", "day"],
+ * });
+ * await analytics.track(ctx, "signup", { subjectRef: userId, props: { plan: "pro" } });
+ * const total = await analytics.metric(ctx, "signup");
+ * ```
  */
-export class ConvexAnalytics<
-  TEvents extends Record<string, Record<string, unknown>> = DefaultEventMap,
-> {
-  private component: unknown;
-  private _debug = false;
+export class AnalyticsClient<TProps extends Props = Props> {
+  private readonly component: ComponentApi;
+  private readonly scope: string;
+  private readonly dimensions: string[];
+  private readonly granularities: Granularity[];
+  private readonly sampleRate: number;
+  private readonly config: AnalyticsConfig;
 
-   
-  constructor(component: unknown, _config?: ConvexAnalyticsConfig) {
-    this.component = component;
+  constructor(component: unknown, config: AnalyticsConfig = {}) {
+    this.component = component as ComponentApi;
+    this.config = config;
+    this.scope = config.scope ?? DEFAULT_SCOPE;
+    this.dimensions = config.dimensions ?? [];
+    this.granularities = config.granularities ?? ["day"];
+    this.sampleRate = config.sampleRate ?? 1;
   }
 
-  debug(enabled: boolean): void {
-    this._debug = enabled;
-  }
-
-  async track<K extends keyof TEvents & string>(
+  /** Ingest an event: rollup-on-write + raw event + counter. Sampling + dedupe applied. */
+  async track(
     ctx: MutationCtx,
-    userId: string,
-    sessionId: string,
-    name: K,
-    properties?: TEvents[K],
-    metadata?: TrackMetadata,
-  ): Promise<void> {
-    if (this._debug) {
-      logger.debug("track", { name, userId, sessionId, properties, metadata });
-    }
-    const api = this.component as { mutations: { track: unknown } };
-    await ctx.runMutation(api.mutations.track as never, ({
-      userId,
-      sessionId,
+    name: string,
+    opts: TrackOpts<TProps> = {},
+  ): Promise<TrackResult> {
+    return (await ctx.runMutation(this.component.mutations.track as never, {
+      scope: opts.scope ?? this.scope,
       name,
-      properties: properties ?? {},
-      ...metadata,
-    }) as never);
+      subjectRef: opts.subjectRef,
+      sessionRef: opts.sessionRef,
+      props: opts.props,
+      ts: opts.ts,
+      dedupeKey: opts.dedupeKey,
+      dimensions: this.dimensions,
+      granularities: this.granularities,
+      sampleRate: this.sampleRate,
+    } as never)) as TrackResult;
   }
 
-  async identify(
-    ctx: MutationCtx,
-    userId: string,
-    traits?: Record<string, unknown>,
-  ): Promise<void> {
-    const api = this.component as { mutations: { identify: unknown } };
-    await ctx.runMutation(api.mutations.identify as never, ({
-      userId,
-      traits,
-    }) as never);
-  }
-
-  async alias(
-    ctx: MutationCtx,
-    anonymousId: string,
-    identifiedId: string,
-  ): Promise<void> {
-    const api = this.component as { mutations: { alias: unknown } };
-    await ctx.runMutation(api.mutations.alias as never, ({
-      anonymousId,
-      identifiedId,
-    }) as never);
-  }
-
-  async count(
+  /** Total count over a range, optionally filtered by a dimension value. */
+  async metric(
     ctx: QueryCtx,
-    name: keyof TEvents & string,
-    opts?: QueryOpts,
+    name: string,
+    opts: { range?: Range; where?: Where; scope?: string } = {},
   ): Promise<number> {
-    const api = this.component as { queries: { count: unknown } };
-    return await ctx.runQuery(api.queries.count as never, ({
+    return (await ctx.runQuery(this.component.queries.metric as never, {
+      scope: opts.scope ?? this.scope,
       name,
-      from: opts?.from,
-      to: opts?.to,
-    }) as never);
+      range: opts.range,
+      where: opts.where,
+    } as never)) as number;
   }
 
+  /** Top values of a dimension (breakdown). */
+  async top(
+    ctx: QueryCtx,
+    name: string,
+    dimension: string,
+    opts: { range?: Range; limit?: number; scope?: string } = {},
+  ): Promise<TopRow[]> {
+    return (await ctx.runQuery(this.component.queries.top as never, {
+      scope: opts.scope ?? this.scope,
+      name,
+      dimension,
+      range: opts.range,
+      limit: opts.limit,
+    } as never)) as TopRow[];
+  }
+
+  /** Bucketed counts over a range. */
+  async timeseries(
+    ctx: QueryCtx,
+    name: string,
+    opts: { granularity: Granularity; range: Range; where?: Where; scope?: string },
+  ): Promise<TimeseriesPoint[]> {
+    return (await ctx.runQuery(this.component.queries.timeseries as never, {
+      scope: opts.scope ?? this.scope,
+      name,
+      granularity: opts.granularity,
+      range: opts.range,
+      where: opts.where,
+    } as never)) as TimeseriesPoint[];
+  }
+
+  /** DAU/WAU/MAU from subjects. */
+  async uniques(
+    ctx: QueryCtx,
+    opts: { range: Range; granularity: Granularity; scope?: string },
+  ): Promise<UniquesView> {
+    return (await ctx.runQuery(this.component.queries.uniques as never, {
+      scope: opts.scope ?? this.scope,
+      range: opts.range,
+      granularity: opts.granularity,
+    } as never)) as UniquesView;
+  }
+
+  /** Ordered step conversion (generic, keyed by subjectRef). */
+  async funnel(
+    ctx: QueryCtx,
+    steps: string[],
+    opts: { range: Range; scope?: string },
+  ): Promise<FunnelStep[]> {
+    return (await ctx.runQuery(this.component.queries.funnel as never, {
+      scope: opts.scope ?? this.scope,
+      steps,
+      range: opts.range,
+    } as never)) as FunnelStep[];
+  }
+
+  /** Cohort return rates by first-seen period. */
+  async retention(
+    ctx: QueryCtx,
+    opts: {
+      cohortRange: Range;
+      periods: number;
+      granularity?: Granularity;
+      scope?: string;
+    },
+  ): Promise<RetentionCohort[]> {
+    return (await ctx.runQuery(this.component.queries.retention as never, {
+      scope: opts.scope ?? this.scope,
+      cohortRange: opts.cohortRange,
+      periods: opts.periods,
+      granularity: opts.granularity,
+    } as never)) as RetentionCohort[];
+  }
+
+  /** Paginated raw events for an event name, newest first. */
   async list(
     ctx: QueryCtx,
-    name: keyof TEvents & string,
-    opts?: PaginationOpts,
-  ): Promise<PaginatedResult<unknown>> {
-    const api = this.component as { queries: { list: unknown } };
-    return await ctx.runQuery(api.queries.list as never, ({
+    name: string,
+    paginationOpts: PaginationOpts,
+    opts: { scope?: string } = {},
+  ): Promise<EventPage> {
+    return (await ctx.runQuery(this.component.queries.list as never, {
+      scope: opts.scope ?? this.scope,
       name,
-      projectId: opts?.projectId,
-      env: opts?.env,
-      platform: opts?.platform,
-      from: opts?.from,
-      to: opts?.to,
-      limit: opts?.limit,
-      cursor: opts?.cursor,
-    }) as never);
+      paginationOpts,
+    } as never)) as EventPage;
   }
 
-  async summary(
-    ctx: QueryCtx,
-    opts?: { projectId?: string },
-  ): Promise<SummaryItem[]> {
-    const api = this.component as { queries: { summary: unknown } };
-    return await ctx.runQuery(api.queries.summary as never, ({
-      projectId: opts?.projectId,
-    }) as never);
+  /** Persist cron-relevant config (retention/sampling/idle) for the scope. */
+  async configure(
+    ctx: MutationCtx,
+    opts: {
+      retentionDays?: number;
+      sampleRate?: number;
+      sessionIdleMs?: number;
+      scope?: string;
+    } = {},
+  ): Promise<void> {
+    await ctx.runMutation(this.component.mutations.configure as never, {
+      scope: opts.scope ?? this.scope,
+      retentionDays: opts.retentionDays ?? this.config.retentionDays,
+      sampleRate: opts.sampleRate ?? this.config.sampleRate,
+      sessionIdleMs: opts.sessionIdleMs ?? this.config.sessionIdleMs,
+    } as never);
   }
 }

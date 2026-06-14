@@ -1,84 +1,61 @@
 # Multi-Product Scoping
 
-## Overview
+Every table, mutation, and query is partitioned by a single opaque `scope` string. Use it to
+isolate products, environments, tenants, or platforms — whatever partition your host needs.
 
-convex-analytics supports multi-product analytics via three scoping fields:
+| Concept | Field | Default |
+|---------|-------|---------|
+| Partition | `scope` | `"default"` |
 
-| Field | Purpose | Default |
-|-------|---------|---------|
-| projectId | Separate products/apps | "default" |
-| env | Environments (production, staging, dev) | "default" |
-| platform | Platforms (web, ios, android) | "default" |
+## How scoping works
 
-## How Scoping Works
+### Set a default scope on the client
 
-### Track
-
-Pass scoping fields in `TrackMetadata`:
-
-```typescript
-await analytics.track(ctx, userId, sessionId, "signup", { plan: "pro" }, {
-  projectId: "my-saas",
-  env: "production",
-  platform: "web",
+```ts
+const analytics = new AnalyticsClient(components.analytics, {
+  scope: "my-saas",
+  dimensions: ["plan"],
 });
 ```
 
-Via REST:
+### Override per call
 
-```bash
-curl -X POST -H "x-api-key: key" \
-  -d '{"userId":"u1","sessionId":"s1","name":"signup","projectId":"my-saas","env":"production","platform":"web"}' \
-  https://your.convex.site/api/analytics/track
+```ts
+await analytics.track(ctx, "signup", { subjectRef: userId, scope: "customer-a" });
+const total = await analytics.metric(ctx, "signup", { scope: "customer-a" });
 ```
 
-Defaults: All three default to `"default"` if omitted.
+Every read takes the same `scope` option; omit it to fall back to the client's default.
 
-### Query
+## What scope isolates
 
-All GET endpoints accept `?projectId=X&env=Y&platform=Z` as query parameters.
+- `events`, `rollups`, `subjects`, `sessions`, and `config` rows are keyed by `scope`.
+- All indexes lead with `scope`, so reads never span partitions.
+- The sharded counter and aggregate namespaces are `scope:name`, so totals are per-scope.
+- `configure` persists retention/sampling/idle per scope.
 
-When specified:
-- Events are filtered by the scoping fields
-- Rollups are partitioned by projectId + env
-- Sessions carry the scoping fields from their first event
+## Patterns
 
-When omitted: returns data across all scopes.
+**Per-tenant SaaS** — one `scope` per customer:
 
-## Data Partitioning
-
-- **daily_rollups** are keyed by `name + projectId + env + date`
-- Each rollup row is scoped -- no cross-project contamination
-- `users.projectIds` is an array tracking all projects a user has events in
-
-## Use Cases
-
-**Multi-tenant SaaS**: Each customer gets a `projectId`. Dashboard shows per-customer analytics.
-
-```typescript
-// Track for customer A
-await analytics.track(ctx, userId, sessionId, "feature_used", {}, { projectId: "customer-a" });
-
-// Query for customer A only
-const events = await analytics.list(ctx, "feature_used", { projectId: "customer-a" });
+```ts
+await analytics.track(ctx, "feature_used", { subjectRef: userId, scope: "customer-a" });
+const used = await analytics.metric(ctx, "feature_used", { scope: "customer-a" });
 ```
 
-**Staging vs Production**: Use `env` to separate test data.
+**Environment split** — separate staging from production:
 
-```typescript
-await analytics.track(ctx, userId, sessionId, "signup", {}, {
-  env: process.env.CONVEX_ENV === "production" ? "production" : "staging",
-});
+```ts
+const scope = process.env.CONVEX_ENV === "production" ? "prod" : "staging";
+await analytics.track(ctx, "signup", { scope });
 ```
 
-**Web vs Mobile**: Use `platform` to compare platforms.
+**Platform split** — compare web vs mobile by scope, or keep one scope and break down on a
+`platform` prop dimension instead.
 
-```typescript
-// React web app
-await analytics.track(ctx, userId, sessionId, "page_view", {}, { platform: "web" });
+## Mounting vs scope
 
-// React Native mobile app
-await analytics.track(ctx, userId, sessionId, "screen_view", {}, { platform: "ios" });
-```
-
-**Cross-project users**: A user who appears in multiple products has all projectIds in their `user.projectIds` array. The `alias()` function merges projectIds across user records.
+For a **static** set of partitions (web + mobile + file analytics), you can also mount the
+component multiple times (`app.use(analytics, { name })`) — each mount is fully sandboxed.
+Reach for `scope` when partitions are **runtime-created** (a new tenant you can't declare at
+deploy time).

@@ -1,91 +1,67 @@
 # Architecture
 
-## Write Path
+## Write path — rollup-on-write
 
-Full `track()` flow:
+`track` does the aggregation as the event lands, so reads stay O(1) (no rollup lag).
 
 ```
-track(ctx, userId, sessionId, name, properties, metadata)
+track(ctx, name, opts)
   |
-  +- 1. Rate limit (token bucket: 100/min per sessionId, burst 10)
-  |     +-- Exceeded? -> return null (silent drop, no error)
+  +- 1. Rate limit (when sessionRef set: per-session token bucket) -> "dropped" if over
   |
-  +- 2. Validate event name: /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
-  |     +-- Invalid? -> throw Error
+  +- 2. Sampling (when sampleRate < 1) -> "dropped" for the sampled-out fraction
   |
-  +- 3. Filter properties against event_schemas (if registered)
-  |     +-- Unknown keys -> silently dropped
-  |     +-- Type mismatch -> silently dropped
+  +- 3. Dedupe (when dedupeKey set + already exists in scope) -> "duplicate"
   |
-  +- 4. Upsert session (TOCTOU-safe: seqNum derived from eventCount)
-  |     +-- Existing -> patch eventCount++, exitPath, endTime
-  |     +-- New -> insert full session record
+  +- 4. Insert raw event (seq derived from session.eventCount)
   |
-  +- 5. Insert event (seqNum from step 4)
+  +- 5. Upsert session (when sessionRef set)
   |
-  +- 6. Upsert user
-  |     +-- Existing -> patch lastSeen, totalEvents++, sessionCount, projectIds
-  |     +-- New -> insert with firstSeen = lastSeen = now
+  +- 6. Upsert subject (when subjectRef set: firstSeen/lastSeen/eventCount)
   |
-  +- 7. Aggregate insert (namespace: "eventName:YYYY-MM-DD")
-  |     +-- DirectAggregate from @convex-dev/aggregate -- O(log n) counts
+  +- 7. Rollup-on-write: for each granularity bucket, increment the total row
+  |     and one row per host-declared dimension present in props
   |
-  +- 8. Sharded counter increment
-        +-- ShardedCounter from @convex-dev/sharded-counter -- 16 shards
+  +- 8. Aggregate insert (namespace "scope:name") + sharded counter increment
+  |
+  +- return "tracked"
 ```
 
-## Child Components
+Reads come straight from the pre-aggregated `rollups` table (or the sharded counter for an
+unbounded total) — `metric`, `top`, and `timeseries` never scan raw events. `funnel`,
+`retention`, and `uniques` read the `events` / `subjects` tables directly.
 
-| Component | Package | Purpose | Config |
-|-----------|---------|---------|--------|
-| aggregate | @convex-dev/aggregate | O(log n) date-range counts | Namespace: "eventName:YYYY-MM-DD" |
-| shardedCounter | @convex-dev/sharded-counter | High-throughput event counting | 16 shards |
-| rateLimiter | @convex-dev/rate-limiter | Per-session abuse prevention | 100/min, token bucket, burst 10 |
+## Child components
+
+| Component | Package | Role |
+|-----------|---------|------|
+| aggregate | `@convex-dev/aggregate` | Range counts, namespaced `scope:name`. |
+| shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `scope:name` (16 shards). |
+| rateLimiter | `@convex-dev/rate-limiter` | Per-`sessionRef` token bucket (100/min, burst 10). |
 
 Mounted in `convex.config.ts`:
 
-```typescript
+```ts
 const component = defineComponent("analytics");
 component.use(aggregate);
 component.use(shardedCounter);
 component.use(rateLimiter);
 ```
 
-## Session Lifecycle
+## Crons
 
-- Auto-created on first event per sessionId
-- seqNum derived from session.eventCount (TOCTOU-safe: session updated before event insert)
-- Closed by `closeInactiveSessions` cron after 30min of no events
-- Closing sets endTime and computes duration
-
-## Cron Jobs
+Both run inside the component and are idempotent.
 
 | Cron | Schedule | What it does |
-|------|----------|-------------|
-| rollup | Every 5 min | Scans last 10min of events, aggregates into daily_rollups with dimension breakdowns. Idempotent via Math.max merge (not +=). |
-| closeInactiveSessions | Every 5 min | Finds sessions with no events in 30min, sets endTime + duration. |
-| ttlCleanup | Daily | Deletes events older than retention_days (default 90). Emergency mode halves retention if storage >90%. Batched 500/delete, max 5000/run. |
-| monitor | Weekly | Logs storage usage (events, sessions, users). Warns if count > alert_threshold. |
-| rebalance | Weekly | Compares sharded counter vs actual event count per event name. Logs warning if drift >1%. |
+|------|----------|--------------|
+| `prune` | Daily | Deletes raw events older than `retentionDays` per scope (rollups kept forever). Capped per run. |
+| `closeSessions` | Periodic | Sets `endTs` on sessions idle past `sessionIdleMs`. |
 
-## Daily Rollups
+`backfill` is a non-cron internal mutation that re-derives a `(scope, name)`'s rollups from
+the retained raw events — useful after changing dimensions.
 
-- Dimension breakdowns pre-computed: locale, device, country, browser, os, path, referrer, platform
-- Merge strategy: `Math.max` (not `+=`) -- safe to re-run, idempotent
-- Partitioned by: name + projectId + env + date
+## Isolation
 
-## Alias (User Merge)
-
-1. Reassign all events from anonymousId to identifiedId (paginated 500/batch)
-2. Reassign all sessions from anonymousId to identifiedId (paginated 500/batch)
-3. If identifiedId user exists: merge records (min firstSeen, max lastSeen, sum counts, union projectIds), delete anonymous user record
-4. If identifiedId user doesn't exist: rename anonymous user's visitorId
-5. Self-alias (anonymousId === identifiedId) is a no-op
-
-## GDPR Deletion
-
-Cascading delete for a userId:
-
-1. Delete all events (batched 500/delete)
-2. Delete all sessions
-3. Delete user record
+Tables are sandboxed: the host reaches them only through the exported functions. The
+component never reads host or sibling tables. Host data enters only as opaque strings
+(`subjectRef`, `sessionRef`) or host-typed scalar `props` — never `v.any()`.

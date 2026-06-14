@@ -1,22 +1,19 @@
 # Quick Start
 
-Get analytics running in your Convex app in under 5 minutes.
+Get generic analytics running in your Convex app in a few minutes.
 
 ## 1. Install
 
 ```bash
 npm install @vllnt/convex-analytics
-# or
-pnpm add @vllnt/convex-analytics
-# or
-yarn add @vllnt/convex-analytics
+# or: pnpm add @vllnt/convex-analytics
 ```
 
 ## 2. Mount the component
 
 In your `convex/convex.config.ts`:
 
-```typescript
+```ts
 import { defineApp } from "convex/server";
 import analytics from "@vllnt/convex-analytics/convex.config";
 
@@ -25,58 +22,79 @@ app.use(analytics);
 export default app;
 ```
 
-## 3. Create a typed client
+## 3. Create a client
 
-```typescript
-import { ConvexAnalytics } from "@vllnt/convex-analytics";
+```ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
 import { components } from "./_generated/api";
 
-// Untyped (zero friction) — accepts any event name and properties
-const analytics = new ConvexAnalytics(components.analytics);
+type MyProps = { plan?: string; country?: string };
 
-// Typed (compile-time safety) — enforces event names and property shapes
-type MyEvents = {
-  signup: { plan: "free" | "pro" };
-  page_view: { path: string };
-  purchase: { amount: number; currency: string };
-};
-const analytics = new ConvexAnalytics<MyEvents>(components.analytics);
+const analytics = new AnalyticsClient<MyProps>(components.analytics, {
+  dimensions: ["plan", "country"], // host-declared rollup keys
+  granularities: ["day"],
+});
 ```
 
-See [Client SDK](./client-sdk.md) for the full API reference.
+`TProps` types the `props` you pass to `track`. See [Client SDK](./client-sdk.md) for the
+full config and verb reference.
 
 ## 4. Track your first event
 
 Inside a Convex mutation:
 
-```typescript
-await analytics.track(ctx, userId, sessionId, "signup", { plan: "pro" });
+```ts
+await analytics.track(ctx, "signup", {
+  subjectRef: userId,
+  props: { plan: "pro", country: "FR" },
+});
 ```
 
-Event names must match `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`.
+Event names are free strings; `subjectRef` / `sessionRef` are opaque to the component.
 
-## 5. Configure API keys for REST access
+## 5. Read
 
-Set API keys via the Convex dashboard environment variables, or programmatically in a mutation:
+```ts
+const total = await analytics.metric(ctx, "signup");
+const byPlan = await analytics.top(ctx, "signup", "plan");
+const trend = await analytics.timeseries(ctx, "signup", {
+  granularity: "day",
+  range: { from: Date.now() - 30 * 86_400_000, to: Date.now() },
+});
+```
 
-```typescript
-// In a Convex mutation
-await ctx.db.insert("config", {
-  key: "api_keys",
+## 6. (Optional) REST access
+
+Configure API keys, then call the REST surface:
+
+```ts
+// In a Convex mutation, via the client's configSet (or component config mutation)
+await ctx.runMutation(components.analytics.mutations.configSet, {
+  scope: "default",
+  key: "apiKeys",
   value: JSON.stringify(["your-key"]),
 });
 ```
 
-## 6. REST API first call
-
 ```bash
 curl -H "x-api-key: your-key" \
-  https://your-deployment.convex.site/api/analytics/summary
+  "https://your-deployment.convex.site/metric?name=signup"
 ```
 
-The REST API exposes 24 routes. See the API reference for the full list.
+See the [REST API](./api-reference.md) for all five routes.
 
-## 7. MCP setup for Claude Code
+## 7. (Optional) Web preset
+
+```ts
+import { webDimensions, trackPageview } from "@vllnt/convex-analytics/web";
+
+const web = new AnalyticsClient(components.analytics, { dimensions: webDimensions });
+await trackPageview(web, ctx, { path: "/pricing", headers: request.headers });
+```
+
+See [Web Preset](./web-preset.md).
+
+## 8. (Optional) MCP for Claude Code
 
 ```bash
 claude mcp add convex-analytics-mcp \
@@ -84,23 +102,20 @@ claude mcp add convex-analytics-mcp \
   --env ANALYTICS_API_KEY=your-key
 ```
 
-This gives Claude Code 12 analytics tools via the MCP server.
+Gives Claude Code 7 analytics tools. See [MCP Tools](./mcp-tools.md).
 
-## 8. Testing with convex-test
+## 9. Testing
 
-```typescript
+```ts
 import analyticsTest from "@vllnt/convex-analytics/test";
 import { convexTest } from "convex-test";
 
-function initTest() {
-  const t = convexTest();
-  analyticsTest.register(t);
-  return t;
-}
+const t = convexTest(hostSchema, hostModules);
+analyticsTest.register(t);
 ```
 
 ## Next steps
 
-- [Client SDK](./client-sdk.md) -- full TypeScript API reference
-- `packages/convex-analytics/src/component/api.ts` -- REST endpoint source
-- `packages/convex-analytics-mcp/src/server.ts` -- MCP server source
+- [Client SDK](./client-sdk.md) — full config + verb reference
+- [Schema](./schema.md) — the five sandboxed tables
+- [Web Preset](./web-preset.md) — opt-in web dimensions + helpers

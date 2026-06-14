@@ -1,200 +1,120 @@
 # Database Schema
 
-7 tables powering the analytics engine. Schema source of truth: `packages/convex-analytics/src/component/schema.ts`.
-
----
+Five sandboxed tables. Generic and domain-neutral — zero hardcoded web fields, zero
+`v.any()`. Schema source of truth:
+`packages/convex-analytics/src/component/schema.ts`.
 
 ## events
 
-Core event storage. Every tracked interaction is one row.
+Raw event log. One row per tracked event. TTL-pruned past `retentionDays` (rollups are
+kept forever).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| userId | string | Visitor identifier |
-| sessionId | string | Session identifier |
-| name | string | Event name (regex: `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`) |
-| projectId | string | Project scope (default: "default") |
-| env | string | Environment scope (default: "default") |
-| platform | string | Platform scope (default: "default") |
-| properties | any | Custom event properties (filtered by event_schemas if registered) |
-| timestamp | number | Epoch ms |
-| path | string | Page/screen path |
-| locale | string | User locale |
-| referrer | string | Traffic source |
-| device | string | Device type (desktop/mobile/tablet/bot) |
-| browser | string | Browser name (Chrome/Firefox/Safari/Edge/Other) |
-| os | string | Operating system |
-| country | string | Country code (auto-derived from headers) |
-| region | string? | Region (optional) |
-| city | string? | City (optional) |
-| utmSource | string? | UTM source |
-| utmMedium | string? | UTM medium |
-| utmCampaign | string? | UTM campaign |
-| seqNum | number | Event sequence number within session (derived from session.eventCount) |
+| `scope` | string | Multi-tenant partition. Default `"default"`. |
+| `name` | string | Free-string event name (e.g. `"signup"`, `"page_view"`). |
+| `subjectRef` | string? | Opaque subject identifier (user id, device id, …). |
+| `sessionRef` | string? | Opaque session identifier. |
+| `props` | record<string, scalar> | Flat host props. Scalar = string \| number \| boolean \| null. |
+| `ts` | number | Event time (epoch ms). |
+| `seq` | number | Sequence within the session (derived from `session.eventCount`). |
+| `dedupeKey` | string? | Optional idempotency key. |
 
-**Indexes** (12):
+**Indexes:**
 
 | Index | Fields | Purpose |
 |-------|--------|---------|
-| by_name_time | [name, timestamp] | Primary query path for most analytics |
-| by_user_time | [userId, timestamp] | User timeline, alias reassignment |
-| by_session | [sessionId, timestamp] | Session replay |
-| by_name_path | [name, path, timestamp] | Path breakdown |
-| by_name_locale | [name, locale, timestamp] | Locale breakdown |
-| by_name_device | [name, device, timestamp] | Device breakdown |
-| by_name_referrer | [name, referrer, timestamp] | Referrer breakdown |
-| by_name_country | [name, country, timestamp] | Country breakdown |
-| by_name_browser | [name, browser, timestamp] | Browser breakdown |
-| by_name_os | [name, os, timestamp] | OS breakdown |
-| by_project_name | [projectId, name, timestamp] | Multi-project queries |
-| by_project_env | [projectId, env, timestamp] | Env-scoped queries |
+| `by_scope_name_ts` | [scope, name, ts] | Primary query path; funnel, list, prune. |
+| `by_scope_subject_ts` | [scope, subjectRef, ts] | Per-subject reads. |
+| `by_scope_session_ts` | [scope, sessionRef, ts] | Per-session reads. |
+| `by_dedupe` | [scope, dedupeKey] | Dedupe lookup at ingest. |
 
----
+## rollups
+
+Pre-aggregated counts, incremented on write. One row per
+`(scope, name, granularity, bucket, dim, val)`. The row with `dim = ""` and `val = ""` is
+the **total** for that bucket; one row per host-declared dimension value present in `props`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scope` | string | Partition. |
+| `name` | string | Event name. |
+| `granularity` | "hour" \| "day" | Bucket size. |
+| `bucket` | number | Bucket start (epoch ms, truncated to granularity). |
+| `dim` | string | Dimension key (`""` = total). |
+| `val` | string | Dimension value (`""` = total). |
+| `count` | number | Events in this bucket/dimension. |
+
+**Indexes:**
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| `by_scope_name_gran_bucket_dim` | [scope, name, granularity, bucket, dim, val] | metric / top / timeseries reads, on-write upsert. |
+| `by_scope_name_dim_val` | [scope, name, dim, val] | Backfill / dimension scans. |
+
+## subjects
+
+Per-subject lifecycle, for uniques and retention. Upserted on every event that carries a
+`subjectRef`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scope` | string | Partition. |
+| `subjectRef` | string | Opaque subject identifier. |
+| `firstSeen` | number | Earliest event ts. |
+| `lastSeen` | number | Latest event ts. |
+| `eventCount` | number | Total events for this subject. |
+
+**Indexes:**
+
+| Index | Fields | Purpose |
+|-------|--------|---------|
+| `by_scope_subject` | [scope, subjectRef] | Direct lookup / upsert. |
+| `by_scope_firstSeen` | [scope, firstSeen] | Cohort (retention) and uniques scans. |
 
 ## sessions
 
-One row per session. Auto-created on first event for a sessionId. Closed by cron after 30min inactivity.
+Optional generic session aggregates. Created when an event carries a `sessionRef`; closed
+by the `closeSessions` cron after `sessionIdleMs`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| userId | string | |
-| sessionId | string | |
-| projectId | string | |
-| env | string | |
-| platform | string | |
-| startTime | number | First event timestamp |
-| endTime | number? | Last activity timestamp (set by cron) |
-| eventCount | number | Total events in session |
-| entryPath | string | First page path |
-| exitPath | string | Last page path |
-| referrer | string | |
-| device | string | |
-| browser | string | |
-| os | string | |
-| locale | string | |
-| country | string | |
-| duration | number? | endTime - startTime (set by cron) |
+| `scope` | string | Partition. |
+| `sessionRef` | string | Opaque session identifier. |
+| `subjectRef` | string? | Subject the session belongs to, if known. |
+| `startTs` | number | First event ts. |
+| `endTs` | number? | Set when the session is closed by cron. |
+| `lastTs` | number | Latest event ts. |
+| `eventCount` | number | Events in the session. |
 
-**Indexes** (3):
+**Indexes:**
 
 | Index | Fields | Purpose |
 |-------|--------|---------|
-| by_user | [userId, startTime] | User's session history |
-| by_time | [startTime] | Time-ordered session listing |
-| by_session | [sessionId] | Direct session lookup |
-
----
-
-## users
-
-Aggregated user profile. Updated on each event. Stores latest device/browser/OS/locale/country.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| visitorId | string | Matches userId in events/sessions |
-| projectIds | string[] | All projects this user has events in |
-| firstSeen | number | Earliest event timestamp |
-| lastSeen | number | Latest event timestamp |
-| sessionCount | number | |
-| totalEvents | number | |
-| device | string | Latest device |
-| browser | string | Latest browser |
-| os | string | Latest OS |
-| locale | string | Latest locale |
-| country | string | Latest country |
-
-**Indexes** (3):
-
-| Index | Fields | Purpose |
-|-------|--------|---------|
-| by_visitor | [visitorId] | Direct user lookup |
-| by_firstSeen | [firstSeen] | New user queries |
-| by_lastSeen | [lastSeen] | Active/dormant user queries |
-
----
-
-## daily_rollups
-
-Pre-aggregated daily event counts with dimension breakdowns. Populated by cron every 5 minutes. Idempotent merge uses `Math.max` (safe to re-run).
-
-| Field | Type | Description |
-|-------|------|-------------|
-| name | string | Event name |
-| projectId | string | |
-| env | string | |
-| date | string | YYYY-MM-DD |
-| count | number | Event count for this day |
-| uniqueUsers | number | Unique users for this day |
-| dimensions | any | Pre-aggregated breakdown: `{ locale: { "en": 5, "fr": 3 }, device: { "desktop": 6 }, ... }` |
-
-**Indexes** (3):
-
-| Index | Fields | Purpose |
-|-------|--------|---------|
-| by_name_date | [name, date] | Event-specific date range queries |
-| by_project_date | [projectId, name, date] | Project-scoped rollup queries |
-| by_date | [date] | Date-ordered listing, TTL cleanup |
-
----
-
-## event_schemas
-
-Property validation rules per event name. When a schema exists, `track()` silently drops unknown properties and type-mismatched values (intentional, not an error).
-
-| Field | Type | Description |
-|-------|------|-------------|
-| name | string | Event name |
-| allowedProperties | any | `{ key: "string" | "number" | "boolean" }` -- property validation rules |
-
-**Indexes** (1):
-
-| Index | Fields | Purpose |
-|-------|--------|---------|
-| by_name | [name] | Schema lookup during track() |
-
----
+| `by_scope_session` | [scope, sessionRef] | Direct lookup / upsert. |
+| `by_scope_lastTs` | [scope, lastTs] | Idle-session scan for close-sessions cron. |
 
 ## config
 
-Key-value configuration store. Values are JSON-encoded strings.
+Cron-relevant config, keyed by `(scope, key)`. Values are stored as strings. Set via
+`client.configure(ctx, { ... })`; also holds the REST `apiKeys` array (JSON string).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| key | string | Config key |
-| value | string | JSON-encoded value |
+| `scope` | string | Partition. |
+| `key` | string | Config key (`retentionDays`, `sampleRate`, `sessionIdleMs`, `apiKeys`). |
+| `value` | string | String-encoded value. |
 
-**Known keys:**
-
-| Key | Default | Mutable via API | Purpose |
-|-----|---------|-----------------|---------|
-| api_keys | -- | No | JSON array of API key strings |
-| retention_days | 90 | Yes | Days before TTL cleanup |
-| rate_limit | 100 | Yes | Events per minute per session |
-| session_timeout | 30 | Yes | Minutes of inactivity before session close |
-| alert_threshold | 8000 | Yes | Event count warning threshold |
-| emergency_cleanup | "false" | No | Halves retention when storage >90% |
-
-**Indexes** (1):
+**Indexes:**
 
 | Index | Fields | Purpose |
 |-------|--------|---------|
-| by_key | [key] | Direct config lookup |
+| `by_scope_key` | [scope, key] | Direct config lookup. |
 
----
+## Child components
 
-## archives
-
-References to archived event data in Convex file storage. Created by TTL cleanup cron.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| date | string | Archive date |
-| fileId | Id<"_storage"> | Convex file storage reference |
-| eventCount | number | Events in archive |
-| sizeBytes | number | Archive file size |
-
-**Indexes** (1):
-
-| Index | Fields | Purpose |
-|-------|--------|---------|
-| by_date | [date] | Date-ordered archive lookup |
+| Component | Package | Role |
+|-----------|---------|------|
+| aggregate | `@convex-dev/aggregate` | Range counts, namespaced `scope:name`. |
+| shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `scope:name` (16 shards). |
+| rateLimiter | `@convex-dev/rate-limiter` | Per-`sessionRef` token bucket at ingest. |

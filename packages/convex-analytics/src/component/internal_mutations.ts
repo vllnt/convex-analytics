@@ -1,314 +1,164 @@
 import { internalMutation } from "./_generated/server";
-import { components } from "./_generated/api";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { ShardedCounter } from "@convex-dev/sharded-counter";
-import { createConvexLogger } from "@vllnt/logger/convex";
+import { bucketStart, valKey } from "../shared.js";
+import type { Granularity } from "../shared.js";
 
-const logger = createConvexLogger("convex-analytics:crons");
+const PRUNE_CAP = 10000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_RETENTION_DAYS = 90;
+const DEFAULT_SESSION_IDLE_MS = 30 * 60 * 1000;
+const TOTAL = "";
 
-const counter = new ShardedCounter(components.shardedCounter as never, {
-  defaultShards: 16,
+/** Read a numeric config value for a scope, falling back to a default. */
+async function readNumber(
+  ctx: MutationCtx,
+  scope: string,
+  key: string,
+  fallback: number,
+): Promise<number> {
+  const entry = await ctx.db
+    .query("config")
+    .withIndex("by_scope_key", (q) => q.eq("scope", scope).eq("key", key))
+    .unique();
+  if (!entry) return fallback;
+  const n = Number(entry.value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** List every scope that has at least one config row (the scopes a cron should sweep). */
+async function configuredScopes(ctx: MutationCtx): Promise<string[]> {
+  const rows = await ctx.db.query("config").collect();
+  return [...new Set(rows.map((r) => r.scope))];
+}
+
+/** Delete raw events past `retentionDays` for a scope. Rollups are kept forever. Idempotent. */
+export const prune = internalMutation({
+  args: { scope: v.optional(v.string()) },
+  returns: v.object({ deleted: v.number() }),
+  handler: async (ctx, args) => {
+    const scopes = args.scope !== undefined ? [args.scope] : await configuredScopes(ctx);
+
+    const pruneScope = async (scope: string): Promise<number> => {
+      const retentionDays = await readNumber(
+        ctx,
+        scope,
+        "retentionDays",
+        DEFAULT_RETENTION_DAYS,
+      );
+      const cutoff = Date.now() - retentionDays * DAY_MS;
+      const oldest = await ctx.db
+        .query("events")
+        .withIndex("by_scope_name_ts", (q) => q.eq("scope", scope))
+        .order("asc")
+        .take(PRUNE_CAP);
+      const toDelete = oldest.filter((e) => e.ts < cutoff);
+      await Promise.all(toDelete.map((e) => ctx.db.delete(e._id)));
+      return toDelete.length;
+    };
+
+    const counts = await Promise.all(scopes.map(pruneScope));
+    return { deleted: counts.reduce((a, b) => a + b, 0) };
+  },
 });
 
-const BATCH_SIZE = 500;
+/** Close sessions idle past `sessionIdleMs` (set `endTs`). Idempotent. */
+export const closeSessions = internalMutation({
+  args: { scope: v.optional(v.string()) },
+  returns: v.object({ closed: v.number() }),
+  handler: async (ctx, args) => {
+    const scopes = args.scope !== undefined ? [args.scope] : await configuredScopes(ctx);
 
-/** Rollup cron (5min): aggregate new events into daily_rollups. Idempotent. */
-export const rollup = internalMutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const now = Date.now();
-    const tenMinAgo = now - 10 * 60 * 1000;
+    const closeScope = async (scope: string): Promise<number> => {
+      const idleMs = await readNumber(
+        ctx,
+        scope,
+        "sessionIdleMs",
+        DEFAULT_SESSION_IDLE_MS,
+      );
+      const cutoff = Date.now() - idleMs;
+      const open = await ctx.db
+        .query("sessions")
+        .withIndex("by_scope_lastTs", (q) => q.eq("scope", scope).lt("lastTs", cutoff))
+        .take(1000);
+      const stale = open.filter((s) => s.endTs === undefined);
+      await Promise.all(stale.map((s) => ctx.db.patch(s._id, { endTs: s.lastTs })));
+      return stale.length;
+    };
 
-    const recentEvents = await ctx.db
+    const counts = await Promise.all(scopes.map(closeScope));
+    return { closed: counts.reduce((a, b) => a + b, 0) };
+  },
+});
+
+/**
+ * Re-derive rollups from raw events for a `(scope, name)`. Idempotent: deletes
+ * existing rollup rows for the name, then recomputes from the retained raw events.
+ */
+export const backfill = internalMutation({
+  args: {
+    scope: v.string(),
+    name: v.string(),
+    dimensions: v.array(v.string()),
+    granularities: v.array(v.union(v.literal("hour"), v.literal("day"))),
+  },
+  returns: v.object({ events: v.number(), rows: v.number() }),
+  handler: async (ctx, args) => {
+    const grans = args.granularities.length > 0 ? args.granularities : (["day"] as const);
+
+    const existing = await ctx.db
+      .query("rollups")
+      .withIndex("by_scope_name_dim_val", (q) =>
+        q.eq("scope", args.scope).eq("name", args.name),
+      )
+      .collect();
+    await Promise.all(existing.map((r) => ctx.db.delete(r._id)));
+
+    const events = await ctx.db
       .query("events")
-      .order("desc")
-      .take(5000);
+      .withIndex("by_scope_name_ts", (q) =>
+        q.eq("scope", args.scope).eq("name", args.name),
+      )
+      .take(50000);
 
-    const relevantEvents = recentEvents.filter((e) => e.timestamp >= tenMinAgo);
-
-    const groups = new Map<
+    const counts = new Map<string, number>();
+    const meta = new Map<
       string,
-      {
-        name: string;
-        projectId: string;
-        env: string;
-        date: string;
-        count: number;
-        users: Set<string>;
-        dimensions: Record<string, Record<string, number>>;
-      }
+      { gran: Granularity; bucket: number; dim: string; val: string }
     >();
+    const bump = (gran: Granularity, bucket: number, dim: string, val: string): void => {
+      const k = `${gran}|${bucket}|${dim}|${val}`;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+      if (!meta.has(k)) meta.set(k, { gran, bucket, dim, val });
+    };
 
-    for (const e of relevantEvents) {
-      const date = new Date(e.timestamp).toISOString().split("T")[0]!;
-      const key = `${e.name}:${e.projectId}:${e.env}:${date}`;
-
-      if (!groups.has(key)) {
-        groups.set(key, {
-          name: e.name,
-          projectId: e.projectId,
-          env: e.env,
-          date,
-          count: 0,
-          users: new Set(),
-          dimensions: {},
-        });
-      }
-
-      const g = groups.get(key)!;
-      g.count++;
-      g.users.add(e.userId);
-
-      for (const dim of [
-        "locale", "device", "country", "browser", "os", "path", "referrer", "platform",
-      ] as const) {
-        const val = e[dim] as string;
-        if (!g.dimensions[dim]) g.dimensions[dim] = {};
-        g.dimensions[dim]![val] = (g.dimensions[dim]![val] ?? 0) + 1;
-      }
-    }
-
-    const allRollups = await ctx.db.query("daily_rollups").withIndex("by_date").collect();
-    const rollupMap = new Map(
-      allRollups.map((r) => [`${r.projectId}:${r.name}:${r.date}`, r]),
-    );
-
-    for (const [, g] of groups) {
-      const existing = rollupMap.get(`${g.projectId}:${g.name}:${g.date}`);
-
-      if (existing) {
-        const mergedDims = {
-          ...((existing.dimensions as Record<string, Record<string, number>>) ?? {}),
-        };
-        for (const [dim, values] of Object.entries(g.dimensions)) {
-          if (!mergedDims[dim]) mergedDims[dim] = {};
-          for (const [val, cnt] of Object.entries(values)) {
-            mergedDims[dim]![val] = Math.max(mergedDims[dim]![val] ?? 0, cnt);
+    for (const e of events) {
+      for (const gran of grans) {
+        const bucket = bucketStart(e.ts, gran);
+        bump(gran, bucket, TOTAL, TOTAL);
+        for (const dim of args.dimensions) {
+          if (dim in e.props) {
+            bump(gran, bucket, dim, valKey(e.props[dim]!));
           }
         }
-        await ctx.db.patch(existing._id, {
-          count: Math.max(existing.count, g.count),
-          uniqueUsers: Math.max(existing.uniqueUsers, g.users.size),
-          dimensions: mergedDims,
-        });
-      } else {
-        await ctx.db.insert("daily_rollups", {
-          name: g.name,
-          projectId: g.projectId,
-          env: g.env,
-          date: g.date,
-          count: g.count,
-          uniqueUsers: g.users.size,
-          dimensions: g.dimensions,
-        });
       }
     }
 
-    return null;
-  },
-});
-
-/** Session closer (5min): close sessions with no events in 30min. */
-export const closeInactiveSessions = internalMutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
-
-    const activeSessions = await ctx.db
-      .query("sessions")
-      .withIndex("by_time")
-      .take(1000);
-
-    const sessionsToCheck = activeSessions.filter(
-      (s) => s.endTime === undefined || s.duration === undefined,
-    );
-
-    const sessionLastEvents = await Promise.all(
-      sessionsToCheck.map(async (session) => ({
-        session,
-        lastEvent: await ctx.db
-          .query("events")
-          .withIndex("by_session", (q) => q.eq("sessionId", session.sessionId))
-          .order("desc")
-          .first(),
-      })),
-    );
-
-    for (const { session, lastEvent } of sessionLastEvents) {
-      const lastActivity = lastEvent?.timestamp ?? session.startTime;
-      if (lastActivity < thirtyMinAgo) {
-        await ctx.db.patch(session._id, {
-          endTime: lastActivity,
-          duration: lastActivity - session.startTime,
+    await Promise.all(
+      [...counts].map(([k, count]) => {
+        const m = meta.get(k)!;
+        return ctx.db.insert("rollups", {
+          scope: args.scope,
+          name: args.name,
+          granularity: m.gran,
+          bucket: m.bucket,
+          dim: m.dim,
+          val: m.val,
+          count,
         });
-      }
-    }
-
-    return null;
-  },
-});
-
-/** TTL cleanup (daily): delete events older than retention period. */
-export const ttlCleanup = internalMutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const retentionConfig = await ctx.db
-      .query("config")
-      .withIndex("by_key", (q) => q.eq("key", "retention_days"))
-      .unique();
-    const retentionDays = retentionConfig ? parseInt(retentionConfig.value, 10) : 90;
-
-    // Emergency mode: halve retention if storage >90%
-    const storageConfig = await ctx.db
-      .query("config")
-      .withIndex("by_key", (q) => q.eq("key", "emergency_cleanup"))
-      .unique();
-    const effectiveRetention = storageConfig?.value === "true"
-      ? Math.floor(retentionDays / 2)
-      : retentionDays;
-
-    const cutoff = Date.now() - effectiveRetention * 86400000;
-
-    async function deleteBatch(
-      batchCtx: typeof ctx,
-      batchCutoff: number,
-      deletedSoFar: number,
-    ): Promise<number> {
-      const oldEvents = await batchCtx.db
-        .query("events")
-        .order("asc")
-        .take(BATCH_SIZE);
-
-      const toDelete = oldEvents.filter((e) => e.timestamp < batchCutoff);
-      if (toDelete.length === 0) return deletedSoFar;
-
-      for (const event of toDelete) {
-        await batchCtx.db.delete(event._id);
-      }
-
-      const newTotal = deletedSoFar + toDelete.length;
-      if (newTotal >= 5000 || toDelete.length < BATCH_SIZE) return newTotal;
-      return deleteBatch(batchCtx, batchCutoff, newTotal);
-    }
-
-    const deletedCount = await deleteBatch(ctx, cutoff, 0);
-
-    if (deletedCount > 0) {
-      logger.info("ttl-cleanup", { deletedCount, effectiveRetention });
-    }
-
-    return null;
-  },
-});
-
-/** Monitor (weekly): log storage usage warnings. */
-export const monitor = internalMutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const events = await ctx.db.query("events").take(10001);
-    const eventCount = events.length;
-
-    const sessions = await ctx.db.query("sessions").take(10001);
-    const sessionCount = sessions.length;
-
-    const users = await ctx.db.query("users").take(10001);
-    const userCount = users.length;
-
-    const thresholdConfig = await ctx.db
-      .query("config")
-      .withIndex("by_key", (q) => q.eq("key", "alert_threshold"))
-      .unique();
-    const warningThreshold = thresholdConfig ? parseInt(thresholdConfig.value, 10) : 8000;
-
-    if (eventCount >= warningThreshold) {
-      logger.warn("storage-warning", { eventCount, sessionCount, userCount });
-    } else {
-      logger.info("monitor-ok", { eventCount, sessionCount, userCount });
-    }
-
-    return null;
-  },
-});
-
-/** Rebalance (weekly): verify sharded counter counts match actual event counts. */
-export const rebalance = internalMutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const schemas = await ctx.db.query("event_schemas").collect();
-    const names = schemas.map((s) => s.name).slice(0, 10);
-
-    const rebalanceResults = await Promise.all(
-      names.map(async (name) => {
-        const counterCount = await counter.count(ctx, name);
-        const actualEvents = await ctx.db
-          .query("events")
-          .withIndex("by_name_time", (q) => q.eq("name", name))
-          .take(10001);
-        return { name, counterCount, actualCount: actualEvents.length };
       }),
     );
 
-    for (const { name, counterCount, actualCount } of rebalanceResults) {
-      if (actualCount >= 10001) continue;
-
-      const drift = Math.abs(counterCount - actualCount);
-      const driftPct = actualCount > 0 ? drift / actualCount : 0;
-
-      if (driftPct > 0.01) {
-        logger.warn("counter-drift", { name, counterCount, actualCount, driftPct });
-      }
-    }
-
-    return null;
-  },
-});
-
-/** GDPR deletion: remove ALL data for a userId. */
-export const deleteUser = internalMutation({
-  args: { userId: v.string() },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    async function fetchEventBatch(
-      batchCtx: typeof ctx,
-      userId: string,
-    ) {
-      return batchCtx.db
-        .query("events")
-        .withIndex("by_user_time", (q) => q.eq("userId", userId))
-        .take(BATCH_SIZE);
-    }
-
-    let events = await fetchEventBatch(ctx, args.userId);
-    while (events.length > 0) {
-      for (const event of events) {
-        await ctx.db.delete(event._id);
-      }
-      if (events.length < BATCH_SIZE) break;
-      events = await fetchEventBatch(ctx, args.userId);
-    }
-
-    const sessions = await ctx.db
-      .query("sessions")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-    for (const session of sessions) {
-      await ctx.db.delete(session._id);
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_visitor", (q) => q.eq("visitorId", args.userId))
-      .unique();
-    if (user) {
-      await ctx.db.delete(user._id);
-    }
-
-    logger.info("gdpr-deletion-complete", { userId: args.userId });
-    return null;
+    return { events: events.length, rows: counts.size };
   },
 });
