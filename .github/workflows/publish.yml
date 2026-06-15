@@ -73,8 +73,14 @@ jobs:
           unset NODE_AUTH_TOKEN
           BASE_VERSION=$(node -p "require('./package.json').version")
           SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
-          npm version "${BASE_VERSION}-canary.${SHORT_SHA}" --no-git-tag-version --ignore-scripts
-          npx -y npm@11 publish --tag canary --provenance --access public --ignore-scripts
+          CANARY="${BASE_VERSION}-canary.${SHORT_SHA}"
+          npm version "$CANARY" --no-git-tag-version --ignore-scripts
+          # Canary-only repo: publish AS `latest` so it auto-advances to the newest canary
+          # every push (a bare `npm i` always resolves it). OIDC authorizes the publish; a
+          # separate `dist-tag` can't reuse that auth, so advancing `latest` must happen here.
+          npx -y npm@11 publish --tag latest --provenance --access public --ignore-scripts
+          # Best-effort: keep the `canary` alias pointing at the same version too.
+          npx -y npm@11 dist-tag add "@vllnt/convex-analytics@${CANARY}" canary 2>/dev/null || true
       - name: Publish canary — convex-analytics-mcp
         working-directory: packages/convex-analytics-mcp
         run: |
@@ -82,8 +88,10 @@ jobs:
           unset NODE_AUTH_TOKEN
           BASE_VERSION=$(node -p "require('./package.json').version")
           SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
-          npm version "${BASE_VERSION}-canary.${SHORT_SHA}" --no-git-tag-version --ignore-scripts
-          npx -y npm@11 publish --tag canary --provenance --access public --ignore-scripts
+          CANARY="${BASE_VERSION}-canary.${SHORT_SHA}"
+          npm version "$CANARY" --no-git-tag-version --ignore-scripts
+          npx -y npm@11 publish --tag latest --provenance --access public --ignore-scripts
+          npx -y npm@11 dist-tag add "convex-analytics-mcp@${CANARY}" canary 2>/dev/null || true
 
   release:
     name: Publish Release
