@@ -82,6 +82,10 @@ jobs:
           # Best-effort: keep the `canary` alias pointing at the same version too.
           npx -y npm@11 dist-tag add "@vllnt/convex-analytics@${CANARY}" canary 2>/dev/null || true
       - name: Publish canary — convex-analytics-mcp
+        # Best-effort: the secondary MCP package needs its own npm Trusted Publisher
+        # configured before OIDC publish works. Don't fail the canary on it — the
+        # component (above) is the deliverable.
+        continue-on-error: true
         working-directory: packages/convex-analytics-mcp
         run: |
           sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" 2>/dev/null || true
