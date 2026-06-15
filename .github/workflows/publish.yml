@@ -1,46 +1,167 @@
-# Publish to npm — DISABLED until public release
-# Uncomment the `on:` trigger when ready to publish.
 name: Publish
 
-# on:
-#   push:
-#     tags:
-#       - "v*"
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/*/src/**"
+      - "packages/*/package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/publish.yml"
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Release strategy"
+        required: true
+        default: current
+        type: choice
+        options:
+          - current
+          - patch
+          - minor
+          - major
 
-on: workflow_dispatch
+concurrency:
+  group: publish-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  id-token: write
 
 jobs:
-  publish:
-    name: Publish to npm
+  quality:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @vllnt/convex-analytics lint
+      - run: pnpm --filter @vllnt/convex-analytics typecheck
+      - run: pnpm --filter convex-analytics-mcp typecheck
+      - run: pnpm --filter @vllnt/convex-analytics test:coverage
+      - run: pnpm --filter convex-analytics-mcp test
+      - run: pnpm build
+
+  canary:
+    name: Publish Canary
+    needs: quality
+    if: github.event_name == 'push' && vars.CANARY_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Publish canary — @vllnt/convex-analytics
+        working-directory: packages/convex-analytics
+        run: |
+          sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" 2>/dev/null || true
+          unset NODE_AUTH_TOKEN
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          npm version "${BASE_VERSION}-canary.${SHORT_SHA}" --no-git-tag-version --ignore-scripts
+          npx -y npm@11 publish --tag canary --provenance --access public --ignore-scripts
+      - name: Publish canary — convex-analytics-mcp
+        working-directory: packages/convex-analytics-mcp
+        run: |
+          sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" 2>/dev/null || true
+          unset NODE_AUTH_TOKEN
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          npm version "${BASE_VERSION}-canary.${SHORT_SHA}" --no-git-tag-version --ignore-scripts
+          npx -y npm@11 publish --tag canary --provenance --access public --ignore-scripts
+
+  release:
+    name: Publish Release
+    needs: quality
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
-
       - run: pnpm install --frozen-lockfile
-
       - run: pnpm build
 
-      - run: pnpm test
-
-      - name: Publish @vllnt/convex-analytics
+      - name: Prepare version
+        id: version
         working-directory: packages/convex-analytics
-        run: pnpm publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${{ inputs.bump }}" = "current" ]; then
+            VERSION=$(node -p "require('./package.json').version")
+          else
+            npm version ${{ inputs.bump }} --no-git-tag-version --ignore-scripts
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Publish convex-analytics-mcp
-        working-directory: packages/convex-analytics-mcp
-        run: pnpm publish --access public --no-git-checks
+      - name: Generate changelog
+        id: changelog
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then RANGE="HEAD"; else RANGE="${LAST_TAG}..HEAD"; fi
+          {
+            echo "body<<CHANGELOG_EOF"
+            FEATS=$(git log "$RANGE" --pretty=format:"%s" --grep="^feat" 2>/dev/null || true)
+            if [ -n "$FEATS" ]; then echo "### Features"; echo "$FEATS" | sed 's/^/- /'; echo ""; fi
+            FIXES=$(git log "$RANGE" --pretty=format:"%s" --grep="^fix" 2>/dev/null || true)
+            if [ -n "$FIXES" ]; then echo "### Bug Fixes"; echo "$FIXES" | sed 's/^/- /'; echo ""; fi
+            OTHERS=$(git log "$RANGE" --pretty=format:"%s" --invert-grep --grep="^feat" --grep="^fix" 2>/dev/null || true)
+            if [ -n "$OTHERS" ]; then echo "### Other Changes"; echo "$OTHERS" | sed 's/^/- /'; echo ""; fi
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists"; exit 1
+          fi
+          if ! git diff --quiet -- packages/convex-analytics/package.json; then
+            git add packages/convex-analytics/package.json
+            git commit -m "chore(release): v$VERSION"
+            git push origin main
+          fi
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Publish to npm — @vllnt/convex-analytics
+        working-directory: packages/convex-analytics
+        run: |
+          sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" 2>/dev/null || true
+          unset NODE_AUTH_TOKEN
+          npx -y npm@11 publish --tag latest --provenance --access public --ignore-scripts
+
+      - name: Create GitHub Release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "@vllnt/convex-analytics v${{ steps.version.outputs.version }}" \
+            --notes "${{ steps.changelog.outputs.body }}"

@@ -12,6 +12,7 @@ import {
   funnelStep,
   retentionCohort,
   eventPage,
+  distributionView,
 } from "./validators.js";
 import { bucketStart, bucketSize, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
@@ -312,6 +313,64 @@ export const retention = query({
   },
 });
 
+/**
+ * Histogram of a numeric measure over raw events: ascending upper-bound bins +
+ * an overflow bucket. A value `m` falls in the first bin whose `upper >= m`;
+ * values above the last bound land in `overflow`. Non-numeric measure values are
+ * ignored. `count`/`sum` give the population size and total (so mean = sum/count).
+ * Index-backed (`by_scope_name_ts`) and bounded — computed from raw events, like
+ * `funnel`/`retention`.
+ */
+export const distribution = query({
+  args: {
+    scope: v.string(),
+    name: v.string(),
+    measure: v.string(),
+    buckets: v.array(v.number()),
+    range: v.optional(rangeValidator),
+    where: v.optional(whereValidator),
+  },
+  returns: distributionView,
+  handler: async (ctx, args) => {
+    const bins = [...args.buckets]
+      .sort((a, b) => a - b)
+      .map((upper) => ({ upper, count: 0 }));
+    let overflow = 0;
+    let count = 0;
+    let sum = 0;
+
+    const now = Date.now();
+    const to = args.range?.to ?? now;
+    const from = args.range?.from ?? 0;
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_scope_name_ts", (q) =>
+        q.eq("scope", args.scope).eq("name", args.name).gte("ts", from).lte("ts", to),
+      )
+      .take(50000);
+
+    for (const e of events) {
+      if (args.where) {
+        const pv = e.props[args.where.dim];
+        if (pv === undefined || valKey(pv) !== valKey(args.where.val)) continue;
+      }
+      const m = e.props[args.measure];
+      if (typeof m !== "number") continue;
+      count += 1;
+      sum += m;
+      const bin = bins.find((b) => m <= b.upper);
+      if (bin) {
+        bin.count += 1;
+      } else {
+        overflow += 1;
+      }
+    }
+
+    return { bins, overflow, count, sum };
+  },
+});
+
 /** Paginated raw events for an event name, newest first. */
 export const list = query({
   args: {
@@ -324,15 +383,26 @@ export const list = query({
   },
   returns: eventPage,
   handler: async (ctx, args) => {
-    const result = await ctx.db
+    // `.paginate()` is not supported inside a Convex component, so paginate
+    // manually with a `ts`-keyed cursor (newest-first). Bounded + index-backed.
+    // Note: events sharing the exact boundary `ts` may be skipped across a page
+    // edge — adequate for a raw-event peek; precise feeds belong in the host.
+    const { numItems, cursor } = args.paginationOpts;
+    const before = cursor ? Number(cursor) : null;
+    const rows = await ctx.db
       .query("events")
-      .withIndex("by_scope_name_ts", (q) =>
-        q.eq("scope", args.scope).eq("name", args.name),
-      )
+      .withIndex("by_scope_name_ts", (q) => {
+        const base = q.eq("scope", args.scope).eq("name", args.name);
+        return before !== null ? base.lt("ts", before) : base;
+      })
       .order("desc")
-      .paginate(args.paginationOpts);
+      .take(numItems + 1);
+
+    const hasMore = rows.length > numItems;
+    const page = hasMore ? rows.slice(0, numItems) : rows;
+    const last = page.length > 0 ? page[page.length - 1]! : null;
     return {
-      page: result.page.map((e) => ({
+      page: page.map((e) => ({
         _id: e._id as string,
         _creationTime: e._creationTime,
         scope: e.scope,
@@ -344,8 +414,8 @@ export const list = query({
         seq: e.seq,
         dedupeKey: e.dedupeKey,
       })),
-      isDone: result.isDone,
-      continueCursor: result.continueCursor,
+      isDone: !hasMore,
+      continueCursor: last ? String(last.ts) : "",
     };
   },
 });

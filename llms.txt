@@ -5,7 +5,8 @@
 The component owns a standardized, typed schema (events, rollups, subjects, sessions,
 config); host data enters only as opaque refs (`subjectRef`, `sessionRef`) and host-typed
 scalar `props` — never `v.any()`. Host-declared `dimensions` drive rollup-on-write; the verb
-set (`metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `list`) is generic. Web
+set (`metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `distribution`, `list`)
+is generic, across `minute`/`hour`/`day` granularities. Web
 analytics is the opt-in `@vllnt/convex-analytics/web` preset; reactive hooks ship as the
 optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@>=1.21.0` (optional;
 `react@>=18` optional for the `./react` entry).

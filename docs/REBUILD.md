@@ -21,7 +21,7 @@ for ANY event/dimension/domain, not just web.
 new AnalyticsClient(components.analytics, {
   scope?: string,          // multi-tenant partition. default "default"
   dimensions?: string[],   // prop keys to roll up on. default [] (count by event name only = zero-config)
-  granularities?: ("hour"|"day")[],  // rollup buckets. default ["day"]
+  granularities?: ("minute"|"hour"|"day")[],  // rollup buckets. default ["day"] (minute opt-in)
   retentionDays?: number,  // raw-event TTL. default 90 (rollups kept forever)
   sampleRate?: number,     // 0..1. default 1
   propsValidator?,         // optional host validator narrowing props at the boundary
@@ -57,6 +57,7 @@ passed per call from the client (no per-track config read).
 | `uniques(ctx, { range, granularity, scope? })` | DAU/WAU/MAU from subjects |
 | `funnel(ctx, steps[], { range, scope? })` | ordered step conversion (generic) |
 | `retention(ctx, { cohortRange, periods, scope? })` | cohort return rates (generic) |
+| `distribution(ctx, name, measure, { buckets, range?, where?, scope? })` | histogram over a numeric measure (declared upper-bound bins + overflow, with count/sum) |
 | `list(ctx, name, paginationOpts, { scope? })` | paginated raw events |
 | `configure(ctx, { retentionDays?, sampleRate? })` | persist cron config |
 

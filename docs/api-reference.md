@@ -31,7 +31,7 @@ Ingest one event.
 | `props` | No | object | Flat scalar props. |
 | `ts` | No | number | Event time (epoch ms). |
 | `dedupeKey` | No | string | Idempotency key. |
-| `granularities` | No | string[] | `["hour" \| "day"]`. Default `["day"]`. |
+| `granularities` | No | string[] | `["minute" \| "hour" \| "day"]`. Default `["day"]`. |
 | `sampleRate` | No | number | `0..1`. |
 | `scope` | No | string | Partition. Default `"default"`. |
 
@@ -65,7 +65,7 @@ Ingest one event.
 | Param | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Event name. |
-| `granularity` | No | `hour` \| `day` (default `day`). |
+| `granularity` | No | `minute` \| `hour` \| `day` (default `day`). |
 | `from`, `to` | No | Range bounds (epoch ms). |
 | `scope` | No | Partition. |
 
@@ -75,7 +75,7 @@ Ingest one event.
 
 | Param | Required | Description |
 |-------|----------|-------------|
-| `granularity` | No | `hour` \| `day` (default `day`). |
+| `granularity` | No | `minute` \| `hour` \| `day` (default `day`). |
 | `from`, `to` | No | Range bounds (epoch ms). |
 | `scope` | No | Partition. |
 

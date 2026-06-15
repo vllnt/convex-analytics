@@ -23,8 +23,15 @@ export const whereValidator = v.object({
   val: scalarValidator,
 });
 
-/** Rollup bucket granularity. */
-export const granularityValidator = v.union(v.literal("hour"), v.literal("day"));
+/** Rollup bucket granularity. `minute` is opt-in for short live windows. */
+export const granularityValidator = v.union(
+  v.literal("minute"),
+  v.literal("hour"),
+  v.literal("day"),
+);
+
+/** Array of granularities (the `granularities` config, shared by `track` + `backfill`). */
+export const granularitiesValidator = v.array(granularityValidator);
 
 /** A raw event as returned by reads. */
 export const eventView = v.object({
@@ -73,4 +80,15 @@ export const eventPage = v.object({
   page: v.array(eventView),
   isDone: v.boolean(),
   continueCursor: v.string(),
+});
+
+/** A single histogram bin: events whose measure falls at or below `upper`. */
+export const distributionBin = v.object({ upper: v.number(), count: v.number() });
+
+/** Histogram of a numeric measure: ascending upper-bound bins + an overflow bucket. */
+export const distributionView = v.object({
+  bins: v.array(distributionBin),
+  overflow: v.number(),
+  count: v.number(),
+  sum: v.number(),
 });

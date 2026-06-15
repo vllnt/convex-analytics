@@ -21,7 +21,7 @@ Stored on the client and applied to every call. All optional.
 interface AnalyticsConfig {
   scope?: string;            // default "default"
   dimensions?: string[];     // default []
-  granularities?: ("hour" | "day")[]; // default ["day"]
+  granularities?: ("minute" | "hour" | "day")[]; // default ["day"]
   retentionDays?: number;    // default 90
   sampleRate?: number;       // 0..1, default 1
   sessionIdleMs?: number;    // default 1_800_000 (30m)
@@ -32,7 +32,7 @@ interface AnalyticsConfig {
 |--------|---------|---------|---------|
 | `scope` | `"default"` | per call | Multi-tenant partition. Overridable per call via `opts.scope`. |
 | `dimensions` | `[]` | per `track` | Prop keys to roll up on. Empty = count by event name only. |
-| `granularities` | `["day"]` | per `track` | Rollup bucket sizes. |
+| `granularities` | `["day"]` | per `track` | Rollup bucket sizes. `"minute"` for short live windows. |
 | `retentionDays` | `90` | via `configure` | Raw-event TTL in days. Rollups kept forever. |
 | `sampleRate` | `1` | per `track` | Fraction of events kept at ingest. |
 | `sessionIdleMs` | `1_800_000` | via `configure` | Idle timeout before a session is closed. |
@@ -141,6 +141,17 @@ Cohort return rates by first-seen period (default `granularity` `"day"`, `period
 30). Returns `{ cohort, size, retained }[]` where `retained[p]` is the return fraction for
 period `p+1`.
 
+### distribution
+
+```ts
+distribution(ctx, name, measure: string, opts: { buckets: number[]; range?: Range; where?: Where; scope?: string }): Promise<DistributionView>
+```
+
+Histogram of a numeric `props` measure. `buckets` are ascending upper bounds; a value falls in
+the first bin whose `upper >= value`, and values above the last bound land in `overflow`.
+Non-numeric measure values are ignored. Returns `{ bins, overflow, count, sum }` (so
+`sum / count` is the mean). Computed from raw events in range (index-backed, bounded).
+
 ### list
 
 ```ts
@@ -150,12 +161,26 @@ list(ctx, name, paginationOpts: { numItems: number; cursor: string | null }, opt
 Paginated raw events for an event name, newest first. Returns
 `{ page, isDone, continueCursor }`.
 
+## Identifying entities
+
+The component stores no host id of its own. An "entity" or "instance" you slice by is a value
+in `props` under a dimension you declare — `subjectRef`, `sessionRef`, dimension values, and
+`dedupeKey` are all opaque strings you own.
+
+- **One instance** — filter by its dimension value:
+  `metric(ctx, "play", { where: { dim: "puzzleId", val: "2026-06-15" } })` or
+  `timeseries(ctx, "play", { granularity: "hour", range, where: { dim: "puzzleId", val } })`.
+- **Across instances (last N)** — break down by the dimension:
+  `top(ctx, "play", "puzzleId", { limit: 30 })`.
+- **Once per outcome** — pass your own `dedupeKey` (e.g. `` `${puzzleId}:${userId}` ``) to
+  `track` so a refresh or retried mutation counts the outcome once.
+
 ## Types
 
 ```ts
 type Scalar = string | number | boolean | null;
 type Props = Record<string, Scalar>;
-type Granularity = "hour" | "day";
+type Granularity = "minute" | "hour" | "day";
 
 interface Range { from?: number; to?: number; }          // epoch ms
 interface Where { dim: string; val: Scalar; }            // one dimension == one value
@@ -167,6 +192,8 @@ interface UniquesView {
 }
 interface FunnelStep { name: string; count: number; rate: number; }
 interface RetentionCohort { cohort: number; size: number; retained: number[]; }
+interface DistributionBin { upper: number; count: number; }
+interface DistributionView { bins: DistributionBin[]; overflow: number; count: number; sum: number; }
 interface EventView {
   _id: string; _creationTime: number;
   scope: string; name: string;

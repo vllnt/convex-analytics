@@ -132,6 +132,7 @@ describe("GET query endpoints", () => {
     const res = await t.fetch("/timeseries?name=view&granularity=day&from=" + D(1), { headers: auth });
     const points = await res.json();
     expect(points[0].count).toBe(1);
+    expect((await t.fetch("/timeseries?name=view&granularity=minute", { headers: auth })).status).toBe(200);
     expect((await t.fetch("/timeseries?name=view&granularity=year", { headers: auth })).status).toBe(400);
     expect((await t.fetch("/timeseries?granularity=day", { headers: auth })).status).toBe(400);
   });
@@ -139,6 +140,7 @@ describe("GET query endpoints", () => {
   it("/uniques returns DAU/WAU/MAU, 400 on bad granularity", async () => {
     const res = await t.fetch("/uniques?granularity=day&from=" + D(1) + "&to=" + D(2), { headers: auth });
     expect((await res.json()).mau).toBe(1);
+    expect((await t.fetch("/uniques?granularity=minute", { headers: auth })).status).toBe(200);
     expect((await t.fetch("/uniques?granularity=year", { headers: auth })).status).toBe(400);
   });
 

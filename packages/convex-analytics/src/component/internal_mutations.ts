@@ -1,6 +1,7 @@
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { granularitiesValidator } from "./validators.js";
 import { bucketStart, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
 
@@ -100,7 +101,7 @@ export const backfill = internalMutation({
     scope: v.string(),
     name: v.string(),
     dimensions: v.array(v.string()),
-    granularities: v.array(v.union(v.literal("hour"), v.literal("day"))),
+    granularities: granularitiesValidator,
   },
   returns: v.object({ events: v.number(), rows: v.number() }),
   handler: async (ctx, args) => {

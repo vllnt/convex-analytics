@@ -79,6 +79,20 @@ export interface RetentionCohort {
   retained: number[];
 }
 
+/** A histogram bin: events whose measure is at or below `upper`. */
+export interface DistributionBin {
+  upper: number;
+  count: number;
+}
+
+/** Histogram of a numeric measure: bins by ascending upper bound + overflow. */
+export interface DistributionView {
+  bins: DistributionBin[];
+  overflow: number;
+  count: number;
+  sum: number;
+}
+
 /** A raw event as returned by `list`. */
 export interface EventView {
   _id: string;

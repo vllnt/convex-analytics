@@ -26,7 +26,7 @@ const byPlan = await analytics.top(ctx, "signup", "plan"); // [{ value: "pro", c
 - **Generic events** — free-string event name, opaque `subjectRef` / `sessionRef`, host-typed `props`.
 - **Host-declared dimensions** — you pass the prop keys to roll up on; nothing is hardcoded.
 - **Rollup-on-write** — counts are incremented as events land, so `metric` / `top` / `timeseries` read in O(1) (backed by `@convex-dev/aggregate` + `@convex-dev/sharded-counter`).
-- **Rich verb set** — `metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, plus paginated raw `list`.
+- **Rich verb set** — `metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `distribution`, plus paginated raw `list`.
 - **Configurable** — `scope`, `dimensions`, `granularities`, `retentionDays`, `sampleRate`, `propsValidator`; sensible defaults, zero config required.
 - **Per-session rate limiting + dedupe + sampling** built into `track`.
 - **Opt-in web preset** — `@vllnt/convex-analytics/web` adds web dimensions + UA/geo helpers when you want them.
@@ -84,7 +84,7 @@ Passed to the `AnalyticsClient` constructor. All optional — the defaults work 
 |--------|------|---------|---------|
 | `scope` | `string` | `"default"` | Multi-tenant partition; isolates one tenant's data. |
 | `dimensions` | `string[]` | `[]` | Prop keys to roll up on (drives rollup-on-write). Empty = count by event name only. |
-| `granularities` | `("hour" \| "day")[]` | `["day"]` | Rollup bucket sizes. |
+| `granularities` | `("minute" \| "hour" \| "day")[]` | `["day"]` | Rollup bucket sizes (`minute` for short live windows). |
 | `retentionDays` | `number` | `90` | Raw-event TTL in days (rollups are kept forever). Applied via `configure`. |
 | `sampleRate` | `number` | `1` | Fraction `0..1` of events to keep at ingest. |
 | `sessionIdleMs` | `number` | `1800000` | Idle timeout before a session is closed. Applied via `configure`. |
@@ -105,10 +105,20 @@ crons by calling `analytics.configure(ctx, { ... })` once.
 | `uniques(ctx, opts)` | query | DAU / WAU / MAU from subjects. |
 | `funnel(ctx, steps, opts)` | query | Ordered step conversion, keyed by `subjectRef`. |
 | `retention(ctx, opts)` | query | Cohort return rates by first-seen period. |
+| `distribution(ctx, name, measure, opts)` | query | Histogram of a numeric measure over declared buckets + overflow (with `count` / `sum`). |
 | `list(ctx, name, paginationOpts, opts)` | query | Paginated raw events, newest first. |
 | `configure(ctx, opts)` | mutation | Persist cron-relevant config (retention / sampling / idle). |
 
 Full reference: [docs/client-sdk.md](docs/client-sdk.md). REST surface: [docs/api-reference.md](docs/api-reference.md).
+
+## What it serves
+
+The Convex-native, authoritative in-app aggregate layer — predefined-dimension rollups served
+**reactively** in O(1). It complements a product-analytics warehouse; it doesn't replace one.
+Declare the dimensions and measures you'll query and the rollups answer instantly; ad-hoc or
+retroactive questions over **non-declared** dimensions, or beyond the raw-event retention window,
+are an export concern. `metric` / `top` / `timeseries` read pre-aggregated rollups (kept forever);
+`funnel` / `retention` / `distribution` read raw events in range (index-backed, bounded, TTL-pruned).
 
 ## Web preset
 

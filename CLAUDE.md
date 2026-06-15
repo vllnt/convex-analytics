@@ -23,7 +23,7 @@ packages/
         schema.ts              # events, rollups, subjects, sessions, config (sandboxed)
         convex.config.ts       # defineComponent("analytics") + aggregate/shardedCounter/rateLimiter
         mutations.ts           # track, configure, configSet
-        queries.ts             # metric, top, timeseries, uniques, funnel, retention, list, configGet
+        queries.ts             # metric, top, timeseries, uniques, funnel, retention, distribution, list, configGet
         internal_mutations.ts  # crons: prune, closeSessions; backfill
         http.ts                # five generic x-api-key REST routes
         validators.ts          # shared validators (typed scalar props — no v.any())
@@ -54,10 +54,19 @@ The component never reads host or sibling tables. Host data enters only as opaqu
   `v.record(v.string(), scalar)`, never `v.any()`; a host may pass a stricter `propsValidator`.
   (4) Host-declared `dimensions` — the `string[]` of prop keys to roll up on, not a fixed
   web-field set.
+- **Entity/instance identity is the host's, kept opaque.** The component owns no host id. An
+  entity you slice by (a puzzle, an org, a device) is a value in `props` under a host-declared
+  dimension: "one instance" is a `where`-filtered `metric`/`timeseries`, "last-N instances" is
+  `top` over that dimension, and once-per-outcome counting is the host's `dedupeKey`. We never
+  model a host id (e.g. a `dailyNumber`) — that would re-bake a domain assumption.
 - **Rollup-on-write, not a rollup cron.** `track` increments the `(scope, name, gran, bucket,
   dim, val)` rollup rows (a total row + one per declared dimension present in `props`) as the
-  event lands. `metric` / `top` / `timeseries` read the pre-aggregated rows in O(1); there is
-  no 5-minute rollup lag. `backfill` re-derives rollups from raw events when dimensions change.
+  event lands across `minute`/`hour`/`day` buckets (minute opt-in for live windows). `metric` /
+  `top` / `timeseries` read the pre-aggregated rows in O(1); there is no 5-minute rollup lag.
+  `backfill` re-derives rollups from raw events when dimensions change. `funnel` / `retention` /
+  `distribution` are computed from raw events at query time (index-backed, bounded) — the
+  histogram `distribution(name, measure, { buckets })` buckets a numeric `props` measure with an
+  overflow bin.
 - **Web is a preset, never baked in.** The sandboxed core has zero web fields. The web layer
   (`webDimensions`, `parseUserAgent`, `geoFromHeaders`, `trackPageview`) is pure host-side
   helpers in `@vllnt/convex-analytics/web`; a host opts in by passing `webDimensions` to

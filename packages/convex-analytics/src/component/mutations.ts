@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { DirectAggregate } from "@convex-dev/aggregate";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
-import { propsValidator } from "./validators.js";
+import { propsValidator, granularitiesValidator } from "./validators.js";
 import { bucketStart, valKey } from "../shared.js";
 import type { Granularity, Scalar } from "../shared.js";
 
@@ -72,7 +72,7 @@ export const track = mutation({
     ts: v.optional(v.number()),
     dedupeKey: v.optional(v.string()),
     dimensions: v.array(v.string()),
-    granularities: v.array(v.union(v.literal("hour"), v.literal("day"))),
+    granularities: granularitiesValidator,
     sampleRate: v.optional(v.number()),
   },
   returns: v.union(v.literal("tracked"), v.literal("dropped"), v.literal("duplicate")),

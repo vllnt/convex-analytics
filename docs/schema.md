@@ -39,7 +39,7 @@ the **total** for that bucket; one row per host-declared dimension value present
 |-------|------|-------------|
 | `scope` | string | Partition. |
 | `name` | string | Event name. |
-| `granularity` | "hour" \| "day" | Bucket size. |
+| `granularity` | "minute" \| "hour" \| "day" | Bucket size. |
 | `bucket` | number | Bucket start (epoch ms, truncated to granularity). |
 | `dim` | string | Dimension key (`""` = total). |
 | `val` | string | Dimension value (`""` = total). |

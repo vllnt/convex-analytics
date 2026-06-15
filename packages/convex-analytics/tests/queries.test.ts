@@ -13,7 +13,7 @@ async function seed(
     props?: Record<string, string | number | boolean | null>;
     ts: number;
     dimensions?: string[];
-    granularities?: ("hour" | "day")[];
+    granularities?: ("minute" | "hour" | "day")[];
   }>,
 ): Promise<void> {
   for (const r of rows) {
@@ -326,6 +326,16 @@ describe("list", () => {
     expect(e.props).toEqual({ a: "b" });
     expect(typeof e._id).toBe("string");
   });
+
+  it("returns an empty page (done, no cursor) for a name with no events", async () => {
+    const t = initConvexTest();
+    const page = await t.query(api.queries.list, {
+      scope: "default", name: "nope", paginationOpts: { numItems: 10, cursor: null },
+    });
+    expect(page.page).toEqual([]);
+    expect(page.isDone).toBe(true);
+    expect(page.continueCursor).toBe("");
+  });
 });
 
 describe("configGet", () => {
@@ -334,5 +344,105 @@ describe("configGet", () => {
     await t.mutation(api.mutations.configSet, { scope: "s", key: "k", value: "v" });
     expect(await t.query(api.queries.configGet, { scope: "s", key: "k" })).toBe("v");
     expect(await t.query(api.queries.configGet, { scope: "s", key: "nope" })).toBeNull();
+  });
+});
+
+describe("minute granularity", () => {
+  it("rolls up on write and reads a timeseries at minute resolution", async () => {
+    const t = initConvexTest();
+    const m = (min: number) => Date.UTC(2026, 0, 1, 10, min, 0);
+    await seed(t, [
+      { name: "live", ts: m(0), granularities: ["minute"] },
+      { name: "live", ts: m(0), granularities: ["minute"] },
+      { name: "live", ts: m(1), granularities: ["minute"] },
+    ]);
+    const ts = await t.query(api.queries.timeseries, {
+      scope: "default",
+      name: "live",
+      granularity: "minute",
+      range: { from: m(0), to: m(5) },
+    });
+    expect(ts).toEqual([
+      { bucket: m(0), count: 2 },
+      { bucket: m(1), count: 1 },
+    ]);
+  });
+});
+
+describe("distribution", () => {
+  it("buckets a numeric measure into ascending bins + overflow, with sum/count", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { name: "attempt", props: { tries: 1 }, ts: D(1) },
+      { name: "attempt", props: { tries: 2 }, ts: D(1) },
+      { name: "attempt", props: { tries: 2 }, ts: D(2) },
+      { name: "attempt", props: { tries: 5 }, ts: D(2) },
+      { name: "attempt", props: { tries: 99 }, ts: D(3) }, // overflow (> 10)
+      { name: "attempt", props: { tries: "nope" }, ts: D(3) }, // non-numeric → ignored
+      { name: "attempt", ts: D(3) }, // measure missing → ignored
+    ]);
+    const d = await t.query(api.queries.distribution, {
+      scope: "default",
+      name: "attempt",
+      measure: "tries",
+      buckets: [3, 1, 2, 10], // unsorted → sorted to [1,2,3,10]
+    });
+    expect(d.bins).toEqual([
+      { upper: 1, count: 1 },
+      { upper: 2, count: 2 },
+      { upper: 3, count: 0 },
+      { upper: 10, count: 1 }, // tries=5 → first bin >=5 is 10
+    ]);
+    expect(d.overflow).toBe(1); // tries=99
+    expect(d.count).toBe(5); // 1,2,2,5,99
+    expect(d.sum).toBe(109);
+  });
+
+  it("respects a range and a where filter", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { name: "attempt", props: { tries: 1, plan: "pro" }, ts: D(1) },
+      { name: "attempt", props: { tries: 2, plan: "free" }, ts: D(2) },
+      { name: "attempt", props: { tries: 3, plan: "pro" }, ts: D(9) },
+    ]);
+    const ranged = await t.query(api.queries.distribution, {
+      scope: "default", name: "attempt", measure: "tries", buckets: [10],
+      range: { from: D(1), to: D(2, 23) },
+    });
+    expect(ranged.count).toBe(2); // D(9) excluded by range
+
+    const filtered = await t.query(api.queries.distribution, {
+      scope: "default", name: "attempt", measure: "tries", buckets: [10],
+      where: { dim: "plan", val: "pro" },
+    });
+    expect(filtered.count).toBe(2); // plan=free dropped
+    expect(filtered.sum).toBe(4); // tries 1 + 3
+  });
+
+  it("skips events missing the where dimension", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { name: "attempt", props: { tries: 1 }, ts: D(1) }, // no plan prop
+      { name: "attempt", props: { tries: 2, plan: "pro" }, ts: D(1) },
+    ]);
+    const d = await t.query(api.queries.distribution, {
+      scope: "default", name: "attempt", measure: "tries", buckets: [10],
+      where: { dim: "plan", val: "pro" },
+    });
+    expect(d.count).toBe(1);
+    expect(d.sum).toBe(2);
+  });
+
+  it("returns zero-count bins when there are no matching events", async () => {
+    const t = initConvexTest();
+    const d = await t.query(api.queries.distribution, {
+      scope: "default", name: "none", measure: "x", buckets: [1, 2],
+    });
+    expect(d).toEqual({
+      bins: [{ upper: 1, count: 0 }, { upper: 2, count: 0 }],
+      overflow: 0,
+      count: 0,
+      sum: 0,
+    });
   });
 });

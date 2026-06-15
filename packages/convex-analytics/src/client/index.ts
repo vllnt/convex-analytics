@@ -16,6 +16,7 @@ import type {
   UniquesView,
   FunnelStep,
   RetentionCohort,
+  DistributionView,
   PaginationOpts,
   EventPage,
 } from "./types.js";
@@ -31,6 +32,8 @@ export type {
   UniquesView,
   FunnelStep,
   RetentionCohort,
+  DistributionBin,
+  DistributionView,
   PaginationOpts,
   EventPage,
   EventView,
@@ -55,6 +58,7 @@ interface ComponentApi {
     uniques: unknown;
     funnel: unknown;
     retention: unknown;
+    distribution: unknown;
     list: unknown;
     configGet: unknown;
   };
@@ -202,6 +206,23 @@ export class AnalyticsClient<TProps extends Props = Props> {
       periods: opts.periods,
       granularity: opts.granularity,
     } as never)) as RetentionCohort[];
+  }
+
+  /** Histogram of a numeric measure: ascending upper-bound bins + overflow. */
+  async distribution(
+    ctx: QueryCtx,
+    name: string,
+    measure: string,
+    opts: { buckets: number[]; range?: Range; where?: Where; scope?: string },
+  ): Promise<DistributionView> {
+    return (await ctx.runQuery(this.component.queries.distribution as never, {
+      scope: opts.scope ?? this.scope,
+      name,
+      measure,
+      buckets: opts.buckets,
+      range: opts.range,
+      where: opts.where,
+    } as never)) as DistributionView;
   }
 
   /** Paginated raw events for an event name, newest first. */

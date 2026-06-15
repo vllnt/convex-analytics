@@ -34,7 +34,7 @@ const byPlan = await analytics.top(ctx, "signup", "plan"); // [{ value: "pro", c
 - **Generic events** — free-string event name, opaque `subjectRef` / `sessionRef`, host-typed `props`.
 - **Host-declared dimensions** — you pass the prop keys to roll up on; nothing is hardcoded.
 - **Rollup-on-write** — counts are incremented as events land, so `metric` / `top` / `timeseries` read in O(1) (backed by `@convex-dev/aggregate` + `@convex-dev/sharded-counter`).
-- **Rich verb set** — `metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, plus paginated raw `list`.
+- **Rich verb set** — `metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `distribution`, plus paginated raw `list`.
 - **Configurable** — `scope`, `dimensions`, `granularities`, `retentionDays`, `sampleRate`, `propsValidator`; sensible defaults, zero config required.
 - **Per-session rate limiting + dedupe + sampling** built into `track`.
 - **Opt-in web preset** — `@vllnt/convex-analytics/web` adds web dimensions + UA/geo helpers when you want them.
@@ -92,7 +92,7 @@ Passed to the `AnalyticsClient` constructor. All optional — the defaults work 
 |--------|------|---------|---------|
 | `scope` | `string` | `"default"` | Multi-tenant partition; isolates one tenant's data. |
 | `dimensions` | `string[]` | `[]` | Prop keys to roll up on (drives rollup-on-write). Empty = count by event name only. |
-| `granularities` | `("hour" \| "day")[]` | `["day"]` | Rollup bucket sizes. |
+| `granularities` | `("minute" \| "hour" \| "day")[]` | `["day"]` | Rollup bucket sizes (`minute` for short live windows). |
 | `retentionDays` | `number` | `90` | Raw-event TTL in days (rollups are kept forever). Applied via `configure`. |
 | `sampleRate` | `number` | `1` | Fraction `0..1` of events to keep at ingest. |
 | `sessionIdleMs` | `number` | `1800000` | Idle timeout before a session is closed. Applied via `configure`. |
@@ -113,10 +113,20 @@ crons by calling `analytics.configure(ctx, { ... })` once.
 | `uniques(ctx, opts)` | query | DAU / WAU / MAU from subjects. |
 | `funnel(ctx, steps, opts)` | query | Ordered step conversion, keyed by `subjectRef`. |
 | `retention(ctx, opts)` | query | Cohort return rates by first-seen period. |
+| `distribution(ctx, name, measure, opts)` | query | Histogram of a numeric measure over declared buckets + overflow (with `count` / `sum`). |
 | `list(ctx, name, paginationOpts, opts)` | query | Paginated raw events, newest first. |
 | `configure(ctx, opts)` | mutation | Persist cron-relevant config (retention / sampling / idle). |
 
 Full reference: [docs/client-sdk.md](docs/client-sdk.md). REST surface: [docs/api-reference.md](docs/api-reference.md).
+
+## What it serves
+
+The Convex-native, authoritative in-app aggregate layer — predefined-dimension rollups served
+**reactively** in O(1). It complements a product-analytics warehouse; it doesn't replace one.
+Declare the dimensions and measures you'll query and the rollups answer instantly; ad-hoc or
+retroactive questions over **non-declared** dimensions, or beyond the raw-event retention window,
+are an export concern. `metric` / `top` / `timeseries` read pre-aggregated rollups (kept forever);
+`funnel` / `retention` / `distribution` read raw events in range (index-backed, bounded, TTL-pruned).
 
 ## Web preset
 
@@ -231,7 +241,12 @@ is folded into this single `0.1.0` entry.
 - **Rollup-on-write** — counts are incremented as events land, so `metric` / `top` /
   `timeseries` read in O(1) (backed by `@convex-dev/aggregate` + `@convex-dev/sharded-counter`).
 - **Verb set** — `track`, `metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`,
-  `list`, `configure`; all generic across any event / dimension / domain.
+  `distribution`, `list`, `configure`; all generic across any event / dimension / domain.
+- **Distribution** — `distribution(name, measure, { buckets })` is a histogram over a numeric
+  `props` measure (declared upper-bound bins + overflow, with `count` / `sum`), computed from
+  raw events in range (index-backed, bounded).
+- **Granularities** — `minute` / `hour` / `day` rollup buckets (`minute` opt-in for short live
+  windows), end-to-end through `track`, the read verbs, and the REST routes.
 - **Config surface** — `scope`, `dimensions`, `granularities`, `retentionDays`, `sampleRate`,
   `sessionIdleMs`, `propsValidator`; sensible defaults, zero config required. Config is
   applied (not ignored) — `dimensions` / `granularities` / `sampleRate` per call, retention /
@@ -299,7 +314,7 @@ the **total** for that bucket; one row per host-declared dimension value present
 |-------|------|-------------|
 | `scope` | string | Partition. |
 | `name` | string | Event name. |
-| `granularity` | "hour" \| "day" | Bucket size. |
+| `granularity` | "minute" \| "hour" \| "day" | Bucket size. |
 | `bucket` | number | Bucket start (epoch ms, truncated to granularity). |
 | `dim` | string | Dimension key (`""` = total). |
 | `val` | string | Dimension value (`""` = total). |
@@ -407,7 +422,7 @@ Stored on the client and applied to every call. All optional.
 interface AnalyticsConfig {
   scope?: string;            // default "default"
   dimensions?: string[];     // default []
-  granularities?: ("hour" | "day")[]; // default ["day"]
+  granularities?: ("minute" | "hour" | "day")[]; // default ["day"]
   retentionDays?: number;    // default 90
   sampleRate?: number;       // 0..1, default 1
   sessionIdleMs?: number;    // default 1_800_000 (30m)
@@ -418,7 +433,7 @@ interface AnalyticsConfig {
 |--------|---------|---------|---------|
 | `scope` | `"default"` | per call | Multi-tenant partition. Overridable per call via `opts.scope`. |
 | `dimensions` | `[]` | per `track` | Prop keys to roll up on. Empty = count by event name only. |
-| `granularities` | `["day"]` | per `track` | Rollup bucket sizes. |
+| `granularities` | `["day"]` | per `track` | Rollup bucket sizes. `"minute"` for short live windows. |
 | `retentionDays` | `90` | via `configure` | Raw-event TTL in days. Rollups kept forever. |
 | `sampleRate` | `1` | per `track` | Fraction of events kept at ingest. |
 | `sessionIdleMs` | `1_800_000` | via `configure` | Idle timeout before a session is closed. |
@@ -527,6 +542,17 @@ Cohort return rates by first-seen period (default `granularity` `"day"`, `period
 30). Returns `{ cohort, size, retained }[]` where `retained[p]` is the return fraction for
 period `p+1`.
 
+### distribution
+
+```ts
+distribution(ctx, name, measure: string, opts: { buckets: number[]; range?: Range; where?: Where; scope?: string }): Promise<DistributionView>
+```
+
+Histogram of a numeric `props` measure. `buckets` are ascending upper bounds; a value falls in
+the first bin whose `upper >= value`, and values above the last bound land in `overflow`.
+Non-numeric measure values are ignored. Returns `{ bins, overflow, count, sum }` (so
+`sum / count` is the mean). Computed from raw events in range (index-backed, bounded).
+
 ### list
 
 ```ts
@@ -536,12 +562,26 @@ list(ctx, name, paginationOpts: { numItems: number; cursor: string | null }, opt
 Paginated raw events for an event name, newest first. Returns
 `{ page, isDone, continueCursor }`.
 
+## Identifying entities
+
+The component stores no host id of its own. An "entity" or "instance" you slice by is a value
+in `props` under a dimension you declare — `subjectRef`, `sessionRef`, dimension values, and
+`dedupeKey` are all opaque strings you own.
+
+- **One instance** — filter by its dimension value:
+  `metric(ctx, "play", { where: { dim: "puzzleId", val: "2026-06-15" } })` or
+  `timeseries(ctx, "play", { granularity: "hour", range, where: { dim: "puzzleId", val } })`.
+- **Across instances (last N)** — break down by the dimension:
+  `top(ctx, "play", "puzzleId", { limit: 30 })`.
+- **Once per outcome** — pass your own `dedupeKey` (e.g. `` `${puzzleId}:${userId}` ``) to
+  `track` so a refresh or retried mutation counts the outcome once.
+
 ## Types
 
 ```ts
 type Scalar = string | number | boolean | null;
 type Props = Record<string, Scalar>;
-type Granularity = "hour" | "day";
+type Granularity = "minute" | "hour" | "day";
 
 interface Range { from?: number; to?: number; }          // epoch ms
 interface Where { dim: string; val: Scalar; }            // one dimension == one value
@@ -553,6 +593,8 @@ interface UniquesView {
 }
 interface FunnelStep { name: string; count: number; rate: number; }
 interface RetentionCohort { cohort: number; size: number; retained: number[]; }
+interface DistributionBin { upper: number; count: number; }
+interface DistributionView { bins: DistributionBin[]; overflow: number; count: number; sum: number; }
 interface EventView {
   _id: string; _creationTime: number;
   scope: string; name: string;
@@ -600,7 +642,7 @@ Ingest one event.
 | `props` | No | object | Flat scalar props. |
 | `ts` | No | number | Event time (epoch ms). |
 | `dedupeKey` | No | string | Idempotency key. |
-| `granularities` | No | string[] | `["hour" \| "day"]`. Default `["day"]`. |
+| `granularities` | No | string[] | `["minute" \| "hour" \| "day"]`. Default `["day"]`. |
 | `sampleRate` | No | number | `0..1`. |
 | `scope` | No | string | Partition. Default `"default"`. |
 
@@ -634,7 +676,7 @@ Ingest one event.
 | Param | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Event name. |
-| `granularity` | No | `hour` \| `day` (default `day`). |
+| `granularity` | No | `minute` \| `hour` \| `day` (default `day`). |
 | `from`, `to` | No | Range bounds (epoch ms). |
 | `scope` | No | Partition. |
 
@@ -644,7 +686,7 @@ Ingest one event.
 
 | Param | Required | Description |
 |-------|----------|-------------|
-| `granularity` | No | `hour` \| `day` (default `day`). |
+| `granularity` | No | `minute` \| `hour` \| `day` (default `day`). |
 | `from`, `to` | No | Range bounds (epoch ms). |
 | `scope` | No | Partition. |
 
@@ -987,21 +1029,22 @@ export type Scalar = string | number | boolean | null;
 /** Event properties: a flat record of scalar values. */
 export type Props = Record<string, Scalar>;
 
-/** Rollup bucket granularity. */
-export type Granularity = "hour" | "day";
+/** Rollup bucket granularity. `minute` is opt-in for short live windows. */
+export type Granularity = "minute" | "hour" | "day";
 
-const HOUR_MS = 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
-
-/** Truncate an epoch-millis timestamp to the start of its `granularity` bucket. */
-export function bucketStart(ts: number, granularity: Granularity): number {
-  const size = granularity === "hour" ? HOUR_MS : DAY_MS;
-  return Math.floor(ts / size) * size;
-}
 
 /** Bucket size in millis for a granularity. */
 export function bucketSize(granularity: Granularity): number {
-  return granularity === "hour" ? HOUR_MS : DAY_MS;
+  return granularity === "minute" ? MINUTE_MS : granularity === "hour" ? HOUR_MS : DAY_MS;
+}
+
+/** Truncate an epoch-millis timestamp to the start of its `granularity` bucket. */
+export function bucketStart(ts: number, granularity: Granularity): number {
+  const size = bucketSize(granularity);
+  return Math.floor(ts / size) * size;
 }
 
 /** Coerce a scalar prop value to the string form used as a rollup `val` key. */
@@ -1097,6 +1140,20 @@ export interface RetentionCohort {
   retained: number[];
 }
 
+/** A histogram bin: events whose measure is at or below `upper`. */
+export interface DistributionBin {
+  upper: number;
+  count: number;
+}
+
+/** Histogram of a numeric measure: bins by ascending upper bound + overflow. */
+export interface DistributionView {
+  bins: DistributionBin[];
+  overflow: number;
+  count: number;
+  sum: number;
+}
+
 /** A raw event as returned by `list`. */
 export interface EventView {
   _id: string;
@@ -1149,6 +1206,7 @@ import type {
   UniquesView,
   FunnelStep,
   RetentionCohort,
+  DistributionView,
   PaginationOpts,
   EventPage,
 } from "./types.js";
@@ -1164,6 +1222,8 @@ export type {
   UniquesView,
   FunnelStep,
   RetentionCohort,
+  DistributionBin,
+  DistributionView,
   PaginationOpts,
   EventPage,
   EventView,
@@ -1188,6 +1248,7 @@ interface ComponentApi {
     uniques: unknown;
     funnel: unknown;
     retention: unknown;
+    distribution: unknown;
     list: unknown;
     configGet: unknown;
   };
@@ -1335,6 +1396,23 @@ export class AnalyticsClient<TProps extends Props = Props> {
       periods: opts.periods,
       granularity: opts.granularity,
     } as never)) as RetentionCohort[];
+  }
+
+  /** Histogram of a numeric measure: ascending upper-bound bins + overflow. */
+  async distribution(
+    ctx: QueryCtx,
+    name: string,
+    measure: string,
+    opts: { buckets: number[]; range?: Range; where?: Where; scope?: string },
+  ): Promise<DistributionView> {
+    return (await ctx.runQuery(this.component.queries.distribution as never, {
+      scope: opts.scope ?? this.scope,
+      name,
+      measure,
+      buckets: opts.buckets,
+      range: opts.range,
+      where: opts.where,
+    } as never)) as DistributionView;
   }
 
   /** Paginated raw events for an event name, newest first. */
@@ -1861,8 +1939,15 @@ export const whereValidator = v.object({
   val: scalarValidator,
 });
 
-/** Rollup bucket granularity. */
-export const granularityValidator = v.union(v.literal("hour"), v.literal("day"));
+/** Rollup bucket granularity. `minute` is opt-in for short live windows. */
+export const granularityValidator = v.union(
+  v.literal("minute"),
+  v.literal("hour"),
+  v.literal("day"),
+);
+
+/** Array of granularities (the `granularities` config, shared by `track` + `backfill`). */
+export const granularitiesValidator = v.array(granularityValidator);
 
 /** A raw event as returned by reads. */
 export const eventView = v.object({
@@ -1913,6 +1998,17 @@ export const eventPage = v.object({
   continueCursor: v.string(),
 });
 
+/** A single histogram bin: events whose measure falls at or below `upper`. */
+export const distributionBin = v.object({ upper: v.number(), count: v.number() });
+
+/** Histogram of a numeric measure: ascending upper-bound bins + an overflow bucket. */
+export const distributionView = v.object({
+  bins: v.array(distributionBin),
+  overflow: v.number(),
+  count: v.number(),
+  sum: v.number(),
+});
+
 ```
 
 ---
@@ -1927,7 +2023,7 @@ import { v } from "convex/values";
 import { DirectAggregate } from "@convex-dev/aggregate";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
-import { propsValidator } from "./validators.js";
+import { propsValidator, granularitiesValidator } from "./validators.js";
 import { bucketStart, valKey } from "../shared.js";
 import type { Granularity, Scalar } from "../shared.js";
 
@@ -1994,7 +2090,7 @@ export const track = mutation({
     ts: v.optional(v.number()),
     dedupeKey: v.optional(v.string()),
     dimensions: v.array(v.string()),
-    granularities: v.array(v.union(v.literal("hour"), v.literal("day"))),
+    granularities: granularitiesValidator,
     sampleRate: v.optional(v.number()),
   },
   returns: v.union(v.literal("tracked"), v.literal("dropped"), v.literal("duplicate")),
@@ -2197,6 +2293,7 @@ import {
   funnelStep,
   retentionCohort,
   eventPage,
+  distributionView,
 } from "./validators.js";
 import { bucketStart, bucketSize, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
@@ -2497,6 +2594,64 @@ export const retention = query({
   },
 });
 
+/**
+ * Histogram of a numeric measure over raw events: ascending upper-bound bins +
+ * an overflow bucket. A value `m` falls in the first bin whose `upper >= m`;
+ * values above the last bound land in `overflow`. Non-numeric measure values are
+ * ignored. `count`/`sum` give the population size and total (so mean = sum/count).
+ * Index-backed (`by_scope_name_ts`) and bounded — computed from raw events, like
+ * `funnel`/`retention`.
+ */
+export const distribution = query({
+  args: {
+    scope: v.string(),
+    name: v.string(),
+    measure: v.string(),
+    buckets: v.array(v.number()),
+    range: v.optional(rangeValidator),
+    where: v.optional(whereValidator),
+  },
+  returns: distributionView,
+  handler: async (ctx, args) => {
+    const bins = [...args.buckets]
+      .sort((a, b) => a - b)
+      .map((upper) => ({ upper, count: 0 }));
+    let overflow = 0;
+    let count = 0;
+    let sum = 0;
+
+    const now = Date.now();
+    const to = args.range?.to ?? now;
+    const from = args.range?.from ?? 0;
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_scope_name_ts", (q) =>
+        q.eq("scope", args.scope).eq("name", args.name).gte("ts", from).lte("ts", to),
+      )
+      .take(50000);
+
+    for (const e of events) {
+      if (args.where) {
+        const pv = e.props[args.where.dim];
+        if (pv === undefined || valKey(pv) !== valKey(args.where.val)) continue;
+      }
+      const m = e.props[args.measure];
+      if (typeof m !== "number") continue;
+      count += 1;
+      sum += m;
+      const bin = bins.find((b) => m <= b.upper);
+      if (bin) {
+        bin.count += 1;
+      } else {
+        overflow += 1;
+      }
+    }
+
+    return { bins, overflow, count, sum };
+  },
+});
+
 /** Paginated raw events for an event name, newest first. */
 export const list = query({
   args: {
@@ -2560,6 +2715,7 @@ export const configGet = query({
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { granularitiesValidator } from "./validators.js";
 import { bucketStart, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
 
@@ -2659,7 +2815,7 @@ export const backfill = internalMutation({
     scope: v.string(),
     name: v.string(),
     dimensions: v.array(v.string()),
-    granularities: v.array(v.union(v.literal("hour"), v.literal("day"))),
+    granularities: granularitiesValidator,
   },
   returns: v.object({ events: v.number(), rows: v.number() }),
   handler: async (ctx, args) => {
@@ -2886,8 +3042,8 @@ export const timeseriesEndpoint = httpAction(async (ctx, request) => {
   const name = params.get("name");
   if (!name) return error("name parameter required");
   const granularity = params.get("granularity") ?? "day";
-  if (granularity !== "hour" && granularity !== "day") {
-    return error("granularity must be hour or day");
+  if (granularity !== "minute" && granularity !== "hour" && granularity !== "day") {
+    return error("granularity must be minute, hour, or day");
   }
 
   const result = await ctx.runQuery(api.queries.timeseries as never, {
@@ -2907,8 +3063,8 @@ export const uniquesEndpoint = httpAction(async (ctx, request) => {
   if (authError) return authError;
 
   const granularity = params.get("granularity") ?? "day";
-  if (granularity !== "hour" && granularity !== "day") {
-    return error("granularity must be hour or day");
+  if (granularity !== "minute" && granularity !== "hour" && granularity !== "day") {
+    return error("granularity must be minute, hour, or day");
   }
 
   const result = await ctx.runQuery(api.queries.uniques as never, {

@@ -18,7 +18,12 @@ is folded into this single `0.1.0` entry.
 - **Rollup-on-write** — counts are incremented as events land, so `metric` / `top` /
   `timeseries` read in O(1) (backed by `@convex-dev/aggregate` + `@convex-dev/sharded-counter`).
 - **Verb set** — `track`, `metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`,
-  `list`, `configure`; all generic across any event / dimension / domain.
+  `distribution`, `list`, `configure`; all generic across any event / dimension / domain.
+- **Distribution** — `distribution(name, measure, { buckets })` is a histogram over a numeric
+  `props` measure (declared upper-bound bins + overflow, with `count` / `sum`), computed from
+  raw events in range (index-backed, bounded).
+- **Granularities** — `minute` / `hour` / `day` rollup buckets (`minute` opt-in for short live
+  windows), end-to-end through `track`, the read verbs, and the REST routes.
 - **Config surface** — `scope`, `dimensions`, `granularities`, `retentionDays`, `sampleRate`,
   `sessionIdleMs`, `propsValidator`; sensible defaults, zero config required. Config is
   applied (not ignored) — `dimensions` / `granularities` / `sampleRate` per call, retention /

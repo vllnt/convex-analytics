@@ -110,6 +110,24 @@ describe("AnalyticsClient", () => {
     expect(page.page).toHaveLength(1);
   });
 
+  it("exposes the distribution verb", async () => {
+    const t = initConvexTest();
+    const analytics = makeClient<{ tries: number }>();
+    await t.run(async (ctx) => {
+      await analytics.track(ctx, "attempt", { props: { tries: 1 }, ts: D(1) });
+      await analytics.track(ctx, "attempt", { props: { tries: 9 }, ts: D(2) });
+    });
+    const d = await t.run(async (ctx) =>
+      analytics.distribution(ctx, "attempt", "tries", { buckets: [5, 10] }),
+    );
+    expect(d.count).toBe(2);
+    expect(d.sum).toBe(10);
+    expect(d.bins).toEqual([
+      { upper: 5, count: 1 },
+      { upper: 10, count: 1 },
+    ]);
+  });
+
   it("configure persists config from explicit opts and from constructor defaults", async () => {
     const t = initConvexTest();
     const analytics = makeClient({ retentionDays: 45, sampleRate: 0.5, sessionIdleMs: 2000 });

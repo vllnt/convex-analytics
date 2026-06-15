@@ -155,8 +155,8 @@ export const timeseriesEndpoint = httpAction(async (ctx, request) => {
   const name = params.get("name");
   if (!name) return error("name parameter required");
   const granularity = params.get("granularity") ?? "day";
-  if (granularity !== "hour" && granularity !== "day") {
-    return error("granularity must be hour or day");
+  if (granularity !== "minute" && granularity !== "hour" && granularity !== "day") {
+    return error("granularity must be minute, hour, or day");
   }
 
   const result = await ctx.runQuery(api.queries.timeseries as never, {
@@ -176,8 +176,8 @@ export const uniquesEndpoint = httpAction(async (ctx, request) => {
   if (authError) return authError;
 
   const granularity = params.get("granularity") ?? "day";
-  if (granularity !== "hour" && granularity !== "day") {
-    return error("granularity must be hour or day");
+  if (granularity !== "minute" && granularity !== "hour" && granularity !== "day") {
+    return error("granularity must be minute, hour, or day");
   }
 
   const result = await ctx.runQuery(api.queries.uniques as never, {
