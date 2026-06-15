@@ -1,0 +1,5 @@
+# Published-package README/LICENSE are copied from the repo root at build time
+# (single source of truth lives at the root). They are publish artifacts, not
+# committed here — see the `build` script.
+README.md
+LICENSE

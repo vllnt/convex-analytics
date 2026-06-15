@@ -39,7 +39,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && cp ../../README.md ../../LICENSE ./",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
