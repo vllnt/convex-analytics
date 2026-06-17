@@ -5,7 +5,6 @@ dist/
 !.env.example
 # Ignore app _generated but NOT component _generated (needed for convex-test)
 convex/_generated/
-demo/convex/_generated/
 .turbo/
 *.tsbuildinfo
 coverage/

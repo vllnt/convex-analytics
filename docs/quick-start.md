@@ -94,17 +94,7 @@ await trackPageview(web, ctx, { path: "/pricing", headers: request.headers });
 
 See [Web Preset](./web-preset.md).
 
-## 8. (Optional) MCP for Claude Code
-
-```bash
-claude mcp add convex-analytics-mcp \
-  --env CONVEX_URL=https://your-deployment.convex.cloud \
-  --env ANALYTICS_API_KEY=your-key
-```
-
-Gives Claude Code 7 analytics tools. See [MCP Tools](./mcp-tools.md).
-
-## 9. Testing
+## 8. Testing
 
 ```ts
 import analyticsTest from "@vllnt/convex-analytics/test";

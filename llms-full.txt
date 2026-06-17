@@ -160,17 +160,6 @@ const byPlan = useTop(api.analytics.top, { name: "signup", dimension: "plan" });
 Thin reactive wrappers over the host's re-exported query refs (`metric`, `top`, `timeseries`,
 `uniques`). `react` + `convex` are optional peer deps; backend-only consumers pull no React.
 
-## MCP (Claude Code)
-
-```bash
-claude mcp add convex-analytics-mcp \
-  --env CONVEX_URL=https://your-deployment.convex.cloud \
-  --env ANALYTICS_API_KEY=your-key
-```
-
-7 tools: `track`, `get_metric`, `get_top`, `get_timeseries`, `get_uniques`, `detect_anomalies`,
-`query_analytics` (NL router). See [docs/mcp-tools.md](docs/mcp-tools.md).
-
 ## Security
 
 - Auth-agnostic mount — the host gates access and passes opaque `subjectRef` / `sessionRef` in.
@@ -197,7 +186,7 @@ analyticsTest.register(t);
 
 [Schema](docs/schema.md) · [Client SDK](docs/client-sdk.md) · [REST API](docs/api-reference.md) ·
 [Web Preset](docs/web-preset.md) · [Multi-Product](docs/multi-product.md) ·
-[Architecture](docs/architecture.md) · [MCP Tools](docs/mcp-tools.md). For AI agents:
+[Architecture](docs/architecture.md). For AI agents:
 [`llms.txt`](llms.txt) · [`llms-full.txt`](llms-full.txt).
 
 ## Contributing
@@ -263,8 +252,6 @@ is folded into this single `0.1.0` entry.
   `useTimeseries`, `useUniques` over the host's re-exported aggregate query refs.
 - **REST API** — five generic `x-api-key`-authed routes (/track, /metric, /top, /timeseries,
   /uniques), timing-safe key comparison.
-- **MCP server** — 7 tools (`track`, `get_metric`, `get_top`, `get_timeseries`, `get_uniques`,
-  `detect_anomalies`, `query_analytics`).
 - **Testing** — `@vllnt/convex-analytics/test` export for convex-test, registering the child
   components so `track` is exercised end-to-end.
 
@@ -938,82 +925,6 @@ the retained raw events — useful after changing dimensions.
 Tables are sandboxed: the host reaches them only through the exported functions. The
 component never reads host or sibling tables. Host data enters only as opaque strings
 (`subjectRef`, `sessionRef`) or host-typed scalar `props` — never `v.any()`.
-
-
----
-
-## docs/mcp-tools.md
-
-# MCP Tools
-
-The `convex-analytics-mcp` server exposes the generic analytics surface as MCP tools over the
-component's REST endpoints.
-
-## Setup
-
-```bash
-claude mcp add convex-analytics-mcp \
-  --env CONVEX_URL=https://your-deployment.convex.cloud \
-  --env ANALYTICS_API_KEY=your-key
-```
-
-Requires `CONVEX_URL` and `ANALYTICS_API_KEY`. The server targets the `.convex.site` REST
-host derived from `CONVEX_URL`.
-
-## Tools (7)
-
-### track
-
-Ingest an event (rollup-on-write).
-
-- Input: `name` (required), `dimensions` (required, string[]), `subjectRef`, `sessionRef`, `props`, `granularities`, `scope`, `dedupeKey`.
-- Output: the `track` result (`tracked` / `dropped` / `duplicate`).
-
-### get_metric
-
-Total count for an event over a range, optionally filtered by a dimension value.
-
-- Input: `name` (required), `from`, `to`, `dim`, `val`, `scope`.
-- Output: `<name>: <count> events`.
-
-### get_top
-
-Top values of any dimension (generic breakdown — `plan`, `country`, `device`, `path`, …).
-
-- Input: `name` (required), `dimension` (required), `limit`, `from`, `to`, `scope`.
-- Output: table of `value | count`.
-
-### get_timeseries
-
-Event counts bucketed over time.
-
-- Input: `name` (required), `granularity` (`hour` \| `day`), `from`, `to`, `dim`, `val`, `scope`.
-- Output: table of `bucket | count`.
-
-### get_uniques
-
-DAU / WAU / MAU over a range.
-
-- Input: `granularity` (`hour` \| `day`), `from`, `to`, `scope`.
-- Output: JSON `{ dau, wau, mau, trend }`.
-
-### detect_anomalies
-
-Statistical anomaly detection over a timeseries (Z-score). Flags buckets that deviate from
-the mean.
-
-- Input: `name` (required), `granularity`, `from`, `to`, `threshold` (default 2), `scope`.
-- Output: table of anomalous buckets with `count`, `zscore`, `type` (SPIKE / DROP).
-
-### query_analytics
-
-Natural-language router — describe what you want and it dispatches to the right structured
-tool.
-
-- Input: `question` (required), `name`, `dimension`, `scope`.
-- Routes on keywords: trend/over-time → `get_timeseries`; breakdown/top/by → `get_top`;
-  unique/dau/mau → `get_uniques`; anomaly/spike/drop → `detect_anomalies`;
-  count/total/how-many → `get_metric` (default).
 
 
 ---
@@ -2664,15 +2575,26 @@ export const list = query({
   },
   returns: eventPage,
   handler: async (ctx, args) => {
-    const result = await ctx.db
+    // `.paginate()` is not supported inside a Convex component, so paginate
+    // manually with a `ts`-keyed cursor (newest-first). Bounded + index-backed.
+    // Note: events sharing the exact boundary `ts` may be skipped across a page
+    // edge — adequate for a raw-event peek; precise feeds belong in the host.
+    const { numItems, cursor } = args.paginationOpts;
+    const before = cursor ? Number(cursor) : null;
+    const rows = await ctx.db
       .query("events")
-      .withIndex("by_scope_name_ts", (q) =>
-        q.eq("scope", args.scope).eq("name", args.name),
-      )
+      .withIndex("by_scope_name_ts", (q) => {
+        const base = q.eq("scope", args.scope).eq("name", args.name);
+        return before !== null ? base.lt("ts", before) : base;
+      })
       .order("desc")
-      .paginate(args.paginationOpts);
+      .take(numItems + 1);
+
+    const hasMore = rows.length > numItems;
+    const page = hasMore ? rows.slice(0, numItems) : rows;
+    const last = page.length > 0 ? page[page.length - 1]! : null;
     return {
-      page: result.page.map((e) => ({
+      page: page.map((e) => ({
         _id: e._id as string,
         _creationTime: e._creationTime,
         scope: e.scope,
@@ -2684,8 +2606,8 @@ export const list = query({
         seq: e.seq,
         dedupeKey: e.dedupeKey,
       })),
-      isDone: result.isDone,
-      continueCursor: result.continueCursor,
+      isDone: !hasMore,
+      continueCursor: last ? String(last.ts) : "",
     };
   },
 });

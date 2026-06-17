@@ -67,7 +67,6 @@ export default [
       "**/dist/**",
       "**/_generated/**",
       ".turbo/**",
-      "demo/**",
     ],
   },
 ];

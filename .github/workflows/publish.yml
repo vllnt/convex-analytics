@@ -43,9 +43,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @vllnt/convex-analytics lint
       - run: pnpm --filter @vllnt/convex-analytics typecheck
-      - run: pnpm --filter convex-analytics-mcp typecheck
       - run: pnpm --filter @vllnt/convex-analytics test:coverage
-      - run: pnpm --filter convex-analytics-mcp test
       - run: pnpm build
 
   canary:
@@ -79,20 +77,6 @@ jobs:
           # dist-tag; setting a 2nd (e.g. @latest) would need a token — the dist-tag PUT
           # returns 401 under OIDC — so @latest is left untouched. Install the newest canary
           # with `npm i @vllnt/convex-analytics@canary`.
-          npx -y npm@11 publish --tag canary --provenance --access public --ignore-scripts
-      - name: Publish canary — convex-analytics-mcp
-        # Best-effort: the secondary MCP package needs its own npm Trusted Publisher
-        # configured before OIDC publish works. Don't fail the canary on it — the
-        # component (above) is the deliverable.
-        continue-on-error: true
-        working-directory: packages/convex-analytics-mcp
-        run: |
-          sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" 2>/dev/null || true
-          unset NODE_AUTH_TOKEN
-          BASE_VERSION=$(node -p "require('./package.json').version")
-          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
-          CANARY="${BASE_VERSION}-canary.${SHORT_SHA}"
-          npm version "$CANARY" --no-git-tag-version --ignore-scripts
           npx -y npm@11 publish --tag canary --provenance --access public --ignore-scripts
 
   release:
