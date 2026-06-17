@@ -40,7 +40,5 @@ is folded into this single `0.1.0` entry.
   `useTimeseries`, `useUniques` over the host's re-exported aggregate query refs.
 - **REST API** — five generic `x-api-key`-authed routes (/track, /metric, /top, /timeseries,
   /uniques), timing-safe key comparison.
-- **MCP server** — 7 tools (`track`, `get_metric`, `get_top`, `get_timeseries`, `get_uniques`,
-  `detect_anomalies`, `query_analytics`).
 - **Testing** — `@vllnt/convex-analytics/test` export for convex-test, registering the child
   components so `track` is exercised end-to-end.

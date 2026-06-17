@@ -20,11 +20,6 @@ optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@>=1.21.
 - [Web Preset](docs/web-preset.md): opt-in web dimensions + UA/geo helpers + React note
 - [Multi-Product](docs/multi-product.md): the opaque `scope` partition
 - [Architecture](docs/architecture.md): rollup-on-write, child components, crons
-- [MCP Tools](docs/mcp-tools.md): 7 tools for AI-native queries
-
-## Examples
-
-- [Demo app](demo/convex/example.ts): mount + client + track + read in a host harness
 
 ## Optional
 

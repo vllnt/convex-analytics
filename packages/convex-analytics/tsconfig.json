@@ -1,4 +1,5 @@
 {
+  "extends": "@vllnt/typescript/node-library.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
