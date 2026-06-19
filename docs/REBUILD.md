@@ -83,7 +83,7 @@ A config bundle + host-side helpers (NOT in the sandboxed component):
 - vitest → **edge-runtime** + `coverage.thresholds` 100 + `test:coverage` script; **register the child
   components** in tests so `track` is E2E-testable.
 - package.json: `engines`, `publishConfig`, `author` object, `funding`, `sideEffects`, `preversion`,
-  `generate:llms`, `homepage`, `bugs`, `repository`, the exports map (`./convex.config`,
+  `homepage`, `bugs`, `repository`, the exports map (`./convex.config`,
   `./_generated/component.js`, `./test`, `./web`).
 - `convex.json`; the tsconfig set; keep the monorepo (turbo) but each package green.
 - HTTP layer stays optional; genericize `/track` (move UA/geo parsing to the web preset).
@@ -93,7 +93,7 @@ A config bundle + host-side helpers (NOT in the sandboxed component):
 - README: the generic-core-vs-web-preset split, the FULL config surface, the verb table, an honest
   config section (fixes the current "documents config the code ignores" gap).
 - `docs/`: `schema.md` (generic), `client-sdk.md` (real config + verbs), `config.md`, `multi-product.md`
-  (scope), `web-preset.md`. `llms.txt`/`llms-full.txt`, `AGENTS.md`/`CLAUDE.md`.
+  (scope), `web-preset.md`. `llms.txt`, `AGENTS.md`/`CLAUDE.md`.
 
 ## Out of scope (record the call)
 
