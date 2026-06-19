@@ -190,7 +190,7 @@ analyticsTest.register(t);
 [Schema](docs/schema.md) · [Client SDK](docs/client-sdk.md) · [REST API](docs/api-reference.md) ·
 [Web Preset](docs/web-preset.md) · [Multi-Product](docs/multi-product.md) ·
 [Architecture](docs/architecture.md) · [MCP Tools](docs/mcp-tools.md). For AI agents:
-[`llms.txt`](llms.txt) · [`llms-full.txt`](llms-full.txt).
+[`llms.txt`](llms.txt).
 
 ## Contributing
 

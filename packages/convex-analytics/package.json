@@ -46,8 +46,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:ci": "tsc --noEmit",
     "lint": "eslint src/",
-    "generate:llms": "node scripts/generate-llms.mjs",
-    "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck && pnpm generate:llms"
+    "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck"
   },
   "dependencies": {
     "@convex-dev/aggregate": "^0.2.1",

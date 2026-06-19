@@ -99,8 +99,6 @@ When changing public API or behavior, update the relevant files in `docs/`:
 | New MCP tool | `docs/mcp-tools.md` |
 | New scoping field | `docs/multi-product.md` |
 
-After updating `docs/`, also update `llms-full.txt` (concatenation of all docs).
-
 ## Community
 
 - [Code of Conduct](CODE_OF_CONDUCT.md) — expected behavior
