@@ -64,7 +64,7 @@ at 100%, no-leak (scopeRef-gated, aggregates only — never raw events or cross-
 ## first-release [ACTIVE]
 
 **Goal:** Ship `@vllnt/convex-analytics` as the public **canary-only `0.1.0`** — the fleet release
-policy (mirrors the `convex-components` hub *Version hold*): public **and** canary, never a stable
+policy (mirrors the `oss-packages` hub *Version hold*): public **and** canary, never a stable
 bump, so the package gets dogfooded before it's blessed. Ship all build phases first, *then* release.
 **Exit criteria:** all build phases above (`generic-core` → `react-tooling`) shipped and CI-green at
 100% E2E; the repo is **public**; `publish.yml` carries the fleet-standard **canary** job (gated on

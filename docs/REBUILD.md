@@ -93,7 +93,7 @@ A config bundle + host-side helpers (NOT in the sandboxed component):
 - README: the generic-core-vs-web-preset split, the FULL config surface, the verb table, an honest
   config section (fixes the current "documents config the code ignores" gap).
 - `docs/`: `schema.md` (generic), `client-sdk.md` (real config + verbs), `config.md`, `multi-product.md`
-  (scope), `web-preset.md`. `llms.txt`/`llms-full.txt`, `AGENTS.md`/`CLAUDE.md`.
+  (scope), `web-preset.md`. `llms.txt`/`llms-full.txt`, `AGENTS.md`/`AGENTS.md`.
 
 ## Out of scope (record the call)
 

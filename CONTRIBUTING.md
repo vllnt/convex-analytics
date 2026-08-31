@@ -24,7 +24,7 @@ pnpm test
    git checkout -b feat/my-feature   # or fix/, chore/, docs/
    ```
 
-2. **Make your changes** — see the package structure in `CLAUDE.md` or `AGENTS.md`.
+2. **Make your changes** — see the package structure in `AGENTS.md` or `AGENTS.md`.
 
 3. **Run checks**:
    ```bash
@@ -84,7 +84,7 @@ When adding features or fixing bugs, include tests that cover your change.
 
 ## Project Structure
 
-See `CLAUDE.md` for the full package layout, key patterns, and common pitfalls.
+See `AGENTS.md` for the full package layout, key patterns, and common pitfalls.
 
 ## Documentation
 

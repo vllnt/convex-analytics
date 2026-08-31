@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a
+  dedicated codegen script.
 - Adopt the stable v2 vllnt toolchain, TypeScript 7 validation, Convex 1.45,
   `convex-test` 0.0.56, and the latest compatible direct dependencies.
 - Use explicit table names for Convex database patch/delete operations.

@@ -8,8 +8,10 @@
     "preinstall": "npx only-allow pnpm",
     "build": "turbo run build",
     "test": "turbo run test",
-    "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck"
+    "lint": "pnpm check:agents && turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "check:agents": "node -e \"const f=require('node:fs');if(!f.existsSync('AGENTS.md')||f.existsSync('CLAUDE.md')||f.existsSync('.claude'))process.exit(1)\"",
+    "codegen": "pnpm --filter @vllnt/convex-analytics codegen"
   },
   "engines": {
     "npm": "please-use-pnpm",

@@ -1,7 +1,7 @@
 {
   "name": "@vllnt/convex-analytics",
   "version": "0.1.0",
-  "description": "Generic, configurable analytics component for Convex — any event, any dimension, any domain; rollup-on-write with funnels, retention, uniques",
+  "description": "Generic, configurable analytics component for Convex \u2014 any event, any dimension, any domain; rollup-on-write with funnels, retention, uniques",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@9.15.0",
@@ -45,9 +45,11 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "typecheck:ci": "tsc --noEmit",
-    "lint": "eslint src/",
+    "lint": "pnpm --dir ../.. check:agents && eslint src/",
     "generate:llms": "node scripts/generate-llms.mjs",
-    "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck && pnpm generate:llms"
+    "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck && pnpm generate:llms",
+    "codegen": "node scripts/codegen.mjs",
+    "build:codegen": "pnpm codegen && pnpm build"
   },
   "dependencies": {
     "@convex-dev/aggregate": "^0.3.0",
