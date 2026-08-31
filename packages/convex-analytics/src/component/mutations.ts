@@ -48,7 +48,7 @@ async function bumpRollup(
     )
     .unique();
   if (existing) {
-    await ctx.db.patch(existing._id, { count: existing.count + 1 });
+    await ctx.db.patch("rollups", existing._id, { count: existing.count + 1 });
   } else {
     await ctx.db.insert("rollups", {
       scope,
@@ -131,7 +131,7 @@ export const track = mutation({
 
     if (args.sessionRef !== undefined) {
       if (sessionDoc) {
-        await ctx.db.patch(sessionDoc._id, {
+        await ctx.db.patch("sessions", sessionDoc._id, {
           lastTs: ts,
           eventCount: sessionDoc.eventCount + 1,
           subjectRef: args.subjectRef ?? sessionDoc.subjectRef,
@@ -156,7 +156,7 @@ export const track = mutation({
         )
         .unique();
       if (subject) {
-        await ctx.db.patch(subject._id, {
+        await ctx.db.patch("subjects", subject._id, {
           lastSeen: ts > subject.lastSeen ? ts : subject.lastSeen,
           firstSeen: ts < subject.firstSeen ? ts : subject.firstSeen,
           eventCount: subject.eventCount + 1,
@@ -213,7 +213,7 @@ async function upsertConfig(
     .withIndex("by_scope_key", (q) => q.eq("scope", scope).eq("key", key))
     .unique();
   if (existing) {
-    await ctx.db.patch(existing._id, { value });
+    await ctx.db.patch("config", existing._id, { value });
   } else {
     await ctx.db.insert("config", { scope, key, value });
   }

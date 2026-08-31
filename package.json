@@ -17,9 +17,10 @@
     "pnpm": ">=9.0.0"
   },
   "devDependencies": {
-    "@vllnt/eslint-config": "^1.0.0",
-    "eslint": "^9.39.4",
-    "turbo": "^2.4.0",
-    "typescript": "~5.7.0"
+    "@typescript/native": "npm:typescript@7.0.2",
+    "@vllnt/eslint-config": "2.0.0",
+    "eslint": "^9.39.5",
+    "turbo": "^2.10.12",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }
