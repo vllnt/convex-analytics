@@ -8,7 +8,7 @@ scalar `props` — never `v.any()`. Host-declared `dimensions` drive rollup-on-w
 set (`metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `distribution`, `list`)
 is generic, across `minute`/`hour`/`day` granularities. Web
 analytics is the opt-in `@vllnt/convex-analytics/web` preset; reactive hooks ship as the
-optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@>=1.21.0` (optional;
+optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@^1.45.0` (optional;
 `react@>=18` optional for the `./react` entry).
 
 ## Docs
@@ -20,11 +20,6 @@ optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@>=1.21.
 - [Web Preset](docs/web-preset.md): opt-in web dimensions + UA/geo helpers + React note
 - [Multi-Product](docs/multi-product.md): the opaque `scope` partition
 - [Architecture](docs/architecture.md): rollup-on-write, child components, crons
-- [MCP Tools](docs/mcp-tools.md): 7 tools for AI-native queries
-
-## Examples
-
-- [Demo app](demo/convex/example.ts): mount + client + track + read in a host harness
 
 ## Optional
 

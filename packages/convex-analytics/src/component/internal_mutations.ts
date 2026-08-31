@@ -54,7 +54,7 @@ export const prune = internalMutation({
         .order("asc")
         .take(PRUNE_CAP);
       const toDelete = oldest.filter((e) => e.ts < cutoff);
-      await Promise.all(toDelete.map((e) => ctx.db.delete(e._id)));
+      await Promise.all(toDelete.map((e) => ctx.db.delete("events", e._id)));
       return toDelete.length;
     };
 
@@ -83,7 +83,9 @@ export const closeSessions = internalMutation({
         .withIndex("by_scope_lastTs", (q) => q.eq("scope", scope).lt("lastTs", cutoff))
         .take(1000);
       const stale = open.filter((s) => s.endTs === undefined);
-      await Promise.all(stale.map((s) => ctx.db.patch(s._id, { endTs: s.lastTs })));
+      await Promise.all(
+        stale.map((s) => ctx.db.patch("sessions", s._id, { endTs: s.lastTs })),
+      );
       return stale.length;
     };
 
@@ -113,7 +115,7 @@ export const backfill = internalMutation({
         q.eq("scope", args.scope).eq("name", args.name),
       )
       .collect();
-    await Promise.all(existing.map((r) => ctx.db.delete(r._id)));
+    await Promise.all(existing.map((r) => ctx.db.delete("rollups", r._id)));
 
     const events = await ctx.db
       .query("events")

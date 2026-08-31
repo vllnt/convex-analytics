@@ -142,7 +142,7 @@ describe("backfill", () => {
     expect(await t.query(api.queries.top, { scope: "s", name: "e", dimension: "plan" })).toEqual([]);
 
     const res = await t.mutation(internal.internal_mutations.backfill, {
-      scope: "s", name: "e", dimensions: ["plan"], granularities: ["hour", "day"],
+      scope: "s", name: "e", dimensions: ["plan", "missing"], granularities: ["hour", "day"],
     });
     expect(res.events).toBe(2);
     expect(await t.query(api.queries.top, { scope: "s", name: "e", dimension: "plan" }))

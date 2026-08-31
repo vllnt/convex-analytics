@@ -26,14 +26,11 @@ jobs:
       - name: Lint (core)
         run: pnpm --filter @vllnt/convex-analytics lint
 
-      - name: Typecheck (core + mcp)
-        run: pnpm --filter @vllnt/convex-analytics typecheck && pnpm --filter convex-analytics-mcp typecheck
+      - name: Typecheck (core)
+        run: pnpm --filter @vllnt/convex-analytics typecheck
 
       - name: Test core (100% coverage)
         run: pnpm --filter @vllnt/convex-analytics test:coverage
-
-      - name: Test mcp
-        run: pnpm --filter convex-analytics-mcp test
 
       - name: Build (core)
         run: pnpm --filter @vllnt/convex-analytics build

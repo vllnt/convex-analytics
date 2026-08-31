@@ -37,7 +37,7 @@ pnpm test
 4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/):
    ```
    feat(analytics): add new breakdown dimension
-   fix(mcp): handle empty timeseries response
+   fix(analytics): handle empty timeseries response
    docs: update API reference
    chore: bump dependencies
    ```
@@ -96,7 +96,6 @@ When changing public API or behavior, update the relevant files in `docs/`:
 | Client SDK method change | `docs/client-sdk.md` |
 | Schema change | `docs/schema.md` |
 | New cron or write path change | `docs/architecture.md` |
-| New MCP tool | `docs/mcp-tools.md` |
 | New scoping field | `docs/multi-product.md` |
 
 After updating `docs/`, also update `llms-full.txt` (concatenation of all docs).

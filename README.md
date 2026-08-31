@@ -152,17 +152,6 @@ const byPlan = useTop(api.analytics.top, { name: "signup", dimension: "plan" });
 Thin reactive wrappers over the host's re-exported query refs (`metric`, `top`, `timeseries`,
 `uniques`). `react` + `convex` are optional peer deps; backend-only consumers pull no React.
 
-## MCP (Claude Code)
-
-```bash
-claude mcp add convex-analytics-mcp \
-  --env CONVEX_URL=https://your-deployment.convex.cloud \
-  --env ANALYTICS_API_KEY=your-key
-```
-
-7 tools: `track`, `get_metric`, `get_top`, `get_timeseries`, `get_uniques`, `detect_anomalies`,
-`query_analytics` (NL router). See [docs/mcp-tools.md](docs/mcp-tools.md).
-
 ## Security
 
 - Auth-agnostic mount — the host gates access and passes opaque `subjectRef` / `sessionRef` in.
@@ -189,7 +178,7 @@ analyticsTest.register(t);
 
 [Schema](docs/schema.md) · [Client SDK](docs/client-sdk.md) · [REST API](docs/api-reference.md) ·
 [Web Preset](docs/web-preset.md) · [Multi-Product](docs/multi-product.md) ·
-[Architecture](docs/architecture.md) · [MCP Tools](docs/mcp-tools.md). For AI agents:
+[Architecture](docs/architecture.md). For AI agents:
 [`llms.txt`](llms.txt) · [`llms-full.txt`](llms-full.txt).
 
 ## Contributing

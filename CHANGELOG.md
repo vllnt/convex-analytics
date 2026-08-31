@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Adopt the stable v2 vllnt toolchain, TypeScript 7 validation, Convex 1.45,
+  `convex-test` 0.0.56, and the latest compatible direct dependencies.
+- Use explicit table names for Convex database patch/delete operations.
+
 ## [0.1.0] - 2026-06-14
 
 Initial private pre-release. The component is a **generic, domain-neutral** analytics core —
@@ -40,7 +48,5 @@ is folded into this single `0.1.0` entry.
   `useTimeseries`, `useUniques` over the host's re-exported aggregate query refs.
 - **REST API** — five generic `x-api-key`-authed routes (/track, /metric, /top, /timeseries,
   /uniques), timing-safe key comparison.
-- **MCP server** — 7 tools (`track`, `get_metric`, `get_top`, `get_timeseries`, `get_uniques`,
-  `detect_anomalies`, `query_analytics`).
 - **Testing** — `@vllnt/convex-analytics/test` export for convex-test, registering the child
   components so `track` is exercised end-to-end.

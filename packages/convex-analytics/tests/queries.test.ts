@@ -263,10 +263,11 @@ describe("retention", () => {
     const t = initConvexTest();
     await seed(t, [{ ts: D(1), subjectRef: "u1" }]);
     await seed(t, [{ ts: D(2), subjectRef: "u1" }]);
+    await seed(t, [{ ts: D(2), subjectRef: "u2" }]);
     const r = await t.query(api.queries.retention, {
       scope: "default", cohortRange: { from: D(1), to: D(3) }, periods: 2, granularity: "day",
     });
-    expect(r).toHaveLength(1);
+    expect(r).toHaveLength(2);
     expect(r[0]!.size).toBe(1);
     expect(r[0]!.retained[0]).toBe(1);
   });

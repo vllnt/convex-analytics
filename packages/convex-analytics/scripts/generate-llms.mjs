@@ -18,7 +18,6 @@ const docs = [
   "docs/web-preset.md",
   "docs/multi-product.md",
   "docs/architecture.md",
-  "docs/mcp-tools.md",
 ];
 
 // Public source files, fenced as TypeScript. Keep in sync with the public surface.
