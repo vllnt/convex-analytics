@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { api } from "../src/component/_generated/api.js";
+import { api, internal } from "../src/component/_generated/api.js";
 import { initConvexTest } from "./test-helpers.js";
 
 const DAY = Date.UTC(2026, 0, 15, 10, 0, 0);
@@ -158,6 +158,41 @@ describe("track — rollup-on-write", () => {
     expect(
       await t.query(api.queries.top, { scope: "s", name: "e", dimension: "plan" }),
     ).toEqual([{ value: "pro", count: 1 }]);
+  });
+
+  it("keeps session time monotonic and reopens a closed session on new activity", async () => {
+    const t = initConvexTest();
+    await t.mutation(api.mutations.configure, { scope: "s", sessionIdleMs: 1 });
+    await t.mutation(api.mutations.track, {
+      scope: "s", name: "e", sessionRef: "same", ts: DAY + 1000,
+      dimensions: [], granularities: ["day"],
+    });
+    await t.mutation(internal.internal_mutations.closeSessions, { scope: "s" });
+    await t.mutation(api.mutations.track, {
+      scope: "s", name: "e", sessionRef: "same", ts: DAY,
+      dimensions: [], granularities: ["day"],
+    });
+    const session = await t.run(async (ctx) =>
+      ctx.db.query("sessions").withIndex("by_scope_session", (q) =>
+        q.eq("scope", "s").eq("sessionRef", "same"),
+      ).unique(),
+    );
+    expect(session?.lastTs).toBe(DAY + 1000);
+    expect(session?.endTs).toBeUndefined();
+  });
+
+  it("rate-limits identical session refs independently by scope", async () => {
+    const t = initConvexTest();
+    for (let i = 0; i < 10; i++) {
+      expect(await t.mutation(api.mutations.track, {
+        scope: "a", name: "e", sessionRef: "same", ts: DAY + i,
+        dimensions: [], granularities: ["day"],
+      })).toBe("tracked");
+    }
+    expect(await t.mutation(api.mutations.track, {
+      scope: "b", name: "e", sessionRef: "same", ts: DAY,
+      dimensions: [], granularities: ["day"],
+    })).toBe("tracked");
   });
 
   it("rate-limits per sessionRef once the bucket is exhausted", async () => {

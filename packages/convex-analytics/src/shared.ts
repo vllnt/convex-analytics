@@ -24,6 +24,11 @@ export function bucketStart(ts: number, granularity: Granularity): number {
   return Math.floor(ts / size) * size;
 }
 
+/** Serialize a string tuple without delimiter collisions. */
+export function tupleKey(...parts: string[]): string {
+  return JSON.stringify(parts);
+}
+
 /** Coerce a scalar prop value to the string form used as a rollup `val` key. */
 export function valKey(value: Scalar): string {
   return value === null ? "null" : String(value);

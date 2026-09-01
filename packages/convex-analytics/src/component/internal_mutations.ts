@@ -1,3 +1,4 @@
+import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
@@ -5,11 +6,17 @@ import { granularitiesValidator } from "./validators.js";
 import { bucketStart, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
 
-const PRUNE_CAP = 10000;
+const MAINTENANCE_CAP = 500;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RETENTION_DAYS = 90;
 const DEFAULT_SESSION_IDLE_MS = 30 * 60 * 1000;
 const TOTAL = "";
+
+export function guardBackfillSize(eventCount: number): void {
+  if (eventCount > 50000) {
+    throw new Error("backfill requires at most 50000 retained events; existing rollups were preserved");
+  }
+}
 
 /** Read a numeric config value for a scope, falling back to a default. */
 async function readNumber(
@@ -27,70 +34,107 @@ async function readNumber(
   return Number.isFinite(n) ? n : fallback;
 }
 
-/** List every scope that has at least one config row (the scopes a cron should sweep). */
-async function configuredScopes(ctx: MutationCtx): Promise<string[]> {
-  const rows = await ctx.db.query("config").collect();
-  return [...new Set(rows.map((r) => r.scope))];
-}
+const SCOPE_BATCH = 100;
 
 /** Delete raw events past `retentionDays` for a scope. Rollups are kept forever. Idempotent. */
 export const prune = internalMutation({
-  args: { scope: v.optional(v.string()) },
+  args: { scope: v.optional(v.string()), afterScope: v.optional(v.string()) },
   returns: v.object({ deleted: v.number() }),
   handler: async (ctx, args) => {
-    const scopes = args.scope !== undefined ? [args.scope] : await configuredScopes(ctx);
-
-    const pruneScope = async (scope: string): Promise<number> => {
-      const retentionDays = await readNumber(
-        ctx,
-        scope,
-        "retentionDays",
-        DEFAULT_RETENTION_DAYS,
+    if (args.scope === undefined) {
+      const scopes = await ctx.db
+        .query("scopes")
+        .withIndex("by_scope", (q) =>
+          args.afterScope === undefined ? q : q.gt("scope", args.afterScope),
+        )
+        .take(SCOPE_BATCH);
+      await Promise.all(
+        scopes.map((row) =>
+          ctx.scheduler.runAfter(0, internal.internal_mutations.prune, {
+            scope: row.scope,
+          }),
+        ),
       );
-      const cutoff = Date.now() - retentionDays * DAY_MS;
-      const oldest = await ctx.db
-        .query("events")
-        .withIndex("by_scope_name_ts", (q) => q.eq("scope", scope))
-        .order("asc")
-        .take(PRUNE_CAP);
-      const toDelete = oldest.filter((e) => e.ts < cutoff);
-      await Promise.all(toDelete.map((e) => ctx.db.delete("events", e._id)));
-      return toDelete.length;
-    };
+      if (scopes.length === SCOPE_BATCH) {
+        await ctx.scheduler.runAfter(0, internal.internal_mutations.prune, {
+          afterScope: scopes[scopes.length - 1]!.scope,
+        });
+      }
+      return { deleted: 0 };
+    }
 
-    const counts = await Promise.all(scopes.map(pruneScope));
-    return { deleted: counts.reduce((a, b) => a + b, 0) };
+    const retentionDays = await readNumber(
+      ctx,
+      args.scope,
+      "retentionDays",
+      DEFAULT_RETENTION_DAYS,
+    );
+    const cutoff = Date.now() - retentionDays * DAY_MS;
+    const stale = await ctx.db
+      .query("events")
+      .withIndex("by_scope_ts", (q) => q.eq("scope", args.scope!).lt("ts", cutoff))
+      .take(MAINTENANCE_CAP);
+    await Promise.all(stale.map((event) => ctx.db.delete("events", event._id)));
+    if (stale.length === MAINTENANCE_CAP) {
+      await ctx.scheduler.runAfter(0, internal.internal_mutations.prune, {
+        scope: args.scope,
+      });
+    }
+    return { deleted: stale.length };
   },
 });
 
 /** Close sessions idle past `sessionIdleMs` (set `endTs`). Idempotent. */
 export const closeSessions = internalMutation({
-  args: { scope: v.optional(v.string()) },
+  args: { scope: v.optional(v.string()), afterScope: v.optional(v.string()) },
   returns: v.object({ closed: v.number() }),
   handler: async (ctx, args) => {
-    const scopes = args.scope !== undefined ? [args.scope] : await configuredScopes(ctx);
-
-    const closeScope = async (scope: string): Promise<number> => {
-      const idleMs = await readNumber(
-        ctx,
-        scope,
-        "sessionIdleMs",
-        DEFAULT_SESSION_IDLE_MS,
-      );
-      const cutoff = Date.now() - idleMs;
-      const open = await ctx.db
-        .query("sessions")
-        .withIndex("by_scope_lastTs", (q) => q.eq("scope", scope).lt("lastTs", cutoff))
-        .take(1000);
-      const stale = open.filter((s) => s.endTs === undefined);
+    if (args.scope === undefined) {
+      const scopes = await ctx.db
+        .query("scopes")
+        .withIndex("by_scope", (q) =>
+          args.afterScope === undefined ? q : q.gt("scope", args.afterScope),
+        )
+        .take(SCOPE_BATCH);
       await Promise.all(
-        stale.map((s) => ctx.db.patch("sessions", s._id, { endTs: s.lastTs })),
+        scopes.map((row) =>
+          ctx.scheduler.runAfter(0, internal.internal_mutations.closeSessions, {
+            scope: row.scope,
+          }),
+        ),
       );
-      return stale.length;
-    };
+      if (scopes.length === SCOPE_BATCH) {
+        await ctx.scheduler.runAfter(0, internal.internal_mutations.closeSessions, {
+          afterScope: scopes[scopes.length - 1]!.scope,
+        });
+      }
+      return { closed: 0 };
+    }
 
-    const counts = await Promise.all(scopes.map(closeScope));
-    return { closed: counts.reduce((a, b) => a + b, 0) };
+    const idleMs = await readNumber(
+      ctx,
+      args.scope,
+      "sessionIdleMs",
+      DEFAULT_SESSION_IDLE_MS,
+    );
+    const cutoff = Date.now() - idleMs;
+    const stale = await ctx.db
+      .query("sessions")
+      .withIndex("by_scope_endTs_lastTs", (q) =>
+        q.eq("scope", args.scope!).eq("endTs", undefined).lt("lastTs", cutoff),
+      )
+      .take(MAINTENANCE_CAP);
+    await Promise.all(
+      stale.map((session) =>
+        ctx.db.patch("sessions", session._id, { endTs: session.lastTs }),
+      ),
+    );
+    if (stale.length === MAINTENANCE_CAP) {
+      await ctx.scheduler.runAfter(0, internal.internal_mutations.closeSessions, {
+        scope: args.scope,
+      });
+    }
+    return { closed: stale.length };
   },
 });
 
@@ -109,6 +153,14 @@ export const backfill = internalMutation({
   handler: async (ctx, args) => {
     const grans = args.granularities.length > 0 ? args.granularities : (["day"] as const);
 
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_scope_name_ts", (q) =>
+        q.eq("scope", args.scope).eq("name", args.name),
+      )
+      .take(50001);
+    guardBackfillSize(events.length);
+
     const existing = await ctx.db
       .query("rollups")
       .withIndex("by_scope_name_dim_val", (q) =>
@@ -116,13 +168,6 @@ export const backfill = internalMutation({
       )
       .collect();
     await Promise.all(existing.map((r) => ctx.db.delete("rollups", r._id)));
-
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_scope_name_ts", (q) =>
-        q.eq("scope", args.scope).eq("name", args.name),
-      )
-      .take(50000);
 
     const counts = new Map<string, number>();
     const meta = new Map<

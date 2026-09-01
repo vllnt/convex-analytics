@@ -212,6 +212,19 @@ describe("funnel", () => {
     expect(r[1]!.count).toBe(0);
   });
 
+  it("uses a later repeated step when its first occurrence was out of order", async () => {
+    const t = initConvexTest();
+    await seed(t, [
+      { name: "b", subjectRef: "u1", ts: D(1) },
+      { name: "a", subjectRef: "u1", ts: D(1, 1) },
+      { name: "b", subjectRef: "u1", ts: D(1, 2) },
+    ]);
+    const result = await t.query(api.queries.funnel, {
+      scope: "default", steps: ["a", "b"], range: { from: D(1, 0), to: D(2) },
+    });
+    expect(result[1]?.count).toBe(1);
+  });
+
   it("throws with fewer than 2 steps", async () => {
     const t = initConvexTest();
     await expect(

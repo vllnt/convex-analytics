@@ -217,6 +217,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Register automatic session-closing and event-retention cron jobs, including zero-config scopes.
+- Seek expired events by `(scope, ts)`, page scope discovery, and bound/reschedule maintenance at
+  500 rows per transaction.
+- Preserve valid rollups when backfill input exceeds its supported 50,000-event bound instead of
+  deleting them and silently rebuilding from truncated input.
+- Count funnel subjects through later valid repeated steps, isolate rate limits and counters with
+  collision-safe tuple keys, and reopen sessions without moving `lastTs` backward.
+
+### Changed
+
+- Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a
+  dedicated codegen script.
+- Adopt the stable v2 vllnt toolchain, TypeScript 7 validation, Convex 1.45,
+  `convex-test` 0.0.56, and the latest compatible direct dependencies.
+- Use explicit table names for Convex database patch/delete operations.
+
 ## [0.1.0] - 2026-06-14
 
 Initial private pre-release. The component is a **generic, domain-neutral** analytics core —
@@ -956,6 +976,11 @@ export function bucketSize(granularity: Granularity): number {
 export function bucketStart(ts: number, granularity: Granularity): number {
   const size = bucketSize(granularity);
   return Math.floor(ts / size) * size;
+}
+
+/** Serialize a string tuple without delimiter collisions. */
+export function tupleKey(...parts: string[]): string {
+  return JSON.stringify(parts);
 }
 
 /** Coerce a scalar prop value to the string form used as a rollup `val` key. */
@@ -1766,6 +1791,7 @@ export default defineSchema({
     dedupeKey: v.optional(v.string()),
   })
     .index("by_scope_name_ts", ["scope", "name", "ts"])
+    .index("by_scope_ts", ["scope", "ts"])
     .index("by_scope_subject_ts", ["scope", "subjectRef", "ts"])
     .index("by_scope_session_ts", ["scope", "sessionRef", "ts"])
     .index("by_dedupe", ["scope", "dedupeKey"]),
@@ -1809,7 +1835,12 @@ export default defineSchema({
     eventCount: v.number(),
   })
     .index("by_scope_session", ["scope", "sessionRef"])
-    .index("by_scope_lastTs", ["scope", "lastTs"]),
+    .index("by_scope_lastTs", ["scope", "lastTs"])
+    .index("by_scope_endTs_lastTs", ["scope", "endTs", "lastTs"]),
+
+  scopes: defineTable({
+    scope: v.string(),
+  }).index("by_scope", ["scope"]),
 
   config: defineTable({
     scope: v.string(),
@@ -1935,7 +1966,7 @@ import { DirectAggregate } from "@convex-dev/aggregate";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
 import { propsValidator, granularitiesValidator } from "./validators.js";
-import { bucketStart, valKey } from "../shared.js";
+import { bucketStart, tupleKey, valKey } from "../shared.js";
 import type { Granularity, Scalar } from "../shared.js";
 
 type AggregateType = { Key: number; Id: string; Namespace: string };
@@ -1953,6 +1984,16 @@ const rateLimiter = new RateLimiter(components.rateLimiter as never, {
 });
 
 const TOTAL = "";
+
+async function ensureScope(ctx: MutationCtx, scope: string): Promise<void> {
+  const existing = await ctx.db
+    .query("scopes")
+    .withIndex("by_scope", (q) => q.eq("scope", scope))
+    .unique();
+  if (existing === null) {
+    await ctx.db.insert("scopes", { scope });
+  }
+}
 
 /** Increment one rollup row `(scope,name,gran,bucket,dim,val)` by 1, inserting if absent. */
 async function bumpRollup(
@@ -1977,7 +2018,7 @@ async function bumpRollup(
     )
     .unique();
   if (existing) {
-    await ctx.db.patch(existing._id, { count: existing.count + 1 });
+    await ctx.db.patch("rollups", existing._id, { count: existing.count + 1 });
   } else {
     await ctx.db.insert("rollups", {
       scope,
@@ -2013,7 +2054,9 @@ export const track = mutation({
     const grans = args.granularities.length > 0 ? args.granularities : (["day"] as const);
 
     if (args.sessionRef !== undefined) {
-      const rl = await rateLimiter.limit(ctx, "trackEvent", { key: args.sessionRef });
+      const rl = await rateLimiter.limit(ctx, "trackEvent", {
+        key: tupleKey(scope, args.sessionRef),
+      });
       if (!rl.ok) {
         return "dropped";
       }
@@ -2047,6 +2090,8 @@ export const track = mutation({
     }
     const seq = sessionDoc ? sessionDoc.eventCount : 0;
 
+    await ensureScope(ctx, scope);
+
     const eventId = await ctx.db.insert("events", {
       scope,
       name: args.name,
@@ -2060,8 +2105,9 @@ export const track = mutation({
 
     if (args.sessionRef !== undefined) {
       if (sessionDoc) {
-        await ctx.db.patch(sessionDoc._id, {
-          lastTs: ts,
+        await ctx.db.patch("sessions", sessionDoc._id, {
+          lastTs: Math.max(ts, sessionDoc.lastTs),
+          endTs: undefined,
           eventCount: sessionDoc.eventCount + 1,
           subjectRef: args.subjectRef ?? sessionDoc.subjectRef,
         });
@@ -2085,7 +2131,7 @@ export const track = mutation({
         )
         .unique();
       if (subject) {
-        await ctx.db.patch(subject._id, {
+        await ctx.db.patch("subjects", subject._id, {
           lastSeen: ts > subject.lastSeen ? ts : subject.lastSeen,
           firstSeen: ts < subject.firstSeen ? ts : subject.firstSeen,
           eventCount: subject.eventCount + 1,
@@ -2122,9 +2168,9 @@ export const track = mutation({
     await aggregate.insert(ctx, {
       key: ts,
       id: eventId as string,
-      namespace: `${scope}:${args.name}`,
+      namespace: tupleKey(scope, args.name),
     });
-    await counter.add(ctx, `${scope}:${args.name}`);
+    await counter.add(ctx, tupleKey(scope, args.name));
 
     return "tracked";
   },
@@ -2142,7 +2188,7 @@ async function upsertConfig(
     .withIndex("by_scope_key", (q) => q.eq("scope", scope).eq("key", key))
     .unique();
   if (existing) {
-    await ctx.db.patch(existing._id, { value });
+    await ctx.db.patch("config", existing._id, { value });
   } else {
     await ctx.db.insert("config", { scope, key, value });
   }
@@ -2152,6 +2198,7 @@ export const configSet = mutation({
   args: { scope: v.string(), key: v.string(), value: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await ensureScope(ctx, args.scope);
     await upsertConfig(ctx, args.scope, args.key, args.value);
     return null;
   },
@@ -2166,6 +2213,7 @@ export const configure = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await ensureScope(ctx, args.scope);
     const entries: Array<[string, string]> = [];
     if (args.retentionDays !== undefined) {
       entries.push(["retentionDays", String(args.retentionDays)]);
@@ -2206,7 +2254,7 @@ import {
   eventPage,
   distributionView,
 } from "./validators.js";
-import { bucketStart, bucketSize, valKey } from "../shared.js";
+import { bucketStart, bucketSize, tupleKey, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
 
 const counter = new ShardedCounter(components.shardedCounter as never, {
@@ -2229,7 +2277,7 @@ export const metric = query({
     const val = args.where ? valKey(args.where.val) : TOTAL;
 
     if (!args.range && !args.where) {
-      return await counter.count(ctx, `${args.scope}:${args.name}`);
+      return await counter.count(ctx, tupleKey(args.scope, args.name));
     }
 
     const rollups = await ctx.db
@@ -2412,32 +2460,34 @@ export const funnel = query({
             q.eq("scope", args.scope).eq("name", step).gte("ts", from).lte("ts", to),
           )
           .take(10000);
-        const firstTs = new Map<string, number>();
-        for (const e of events) {
-          if (e.subjectRef === undefined) continue;
-          const prev = firstTs.get(e.subjectRef);
-          if (prev === undefined || e.ts < prev) {
-            firstTs.set(e.subjectRef, e.ts);
-          }
+        const timestamps = new Map<string, number[]>();
+        for (const event of events) {
+          if (event.subjectRef === undefined) continue;
+          const subjectTimestamps = timestamps.get(event.subjectRef) ?? [];
+          subjectTimestamps.push(event.ts);
+          timestamps.set(event.subjectRef, subjectTimestamps);
         }
-        return firstTs;
+        return timestamps;
       }),
     );
 
     const results: Array<{ name: string; count: number; rate: number }> = [];
-    let qualified = new Set(stepSubjects[0]!.keys());
-    let firstCount = qualified.size;
+    let qualifiedAt = new Map(
+      [...stepSubjects[0]!.entries()].map(([subject, timestamps]) => [
+        subject,
+        timestamps[0]!,
+      ]),
+    );
+    const firstCount = qualifiedAt.size;
     results.push({ name: args.steps[0]!, count: firstCount, rate: 1 });
 
     for (let i = 1; i < args.steps.length; i++) {
-      const prevTimes = stepSubjects[i - 1]!;
       const thisTimes = stepSubjects[i]!;
-      const next = new Set<string>();
-      for (const subject of qualified) {
-        const prevTs = prevTimes.get(subject);
-        const thisTs = thisTimes.get(subject);
-        if (prevTs !== undefined && thisTs !== undefined && thisTs >= prevTs) {
-          next.add(subject);
+      const next = new Map<string, number>();
+      for (const [subject, previousTs] of qualifiedAt) {
+        const thisTs = thisTimes.get(subject)?.find((timestamp) => timestamp >= previousTs);
+        if (thisTs !== undefined) {
+          next.set(subject, thisTs);
         }
       }
       results.push({
@@ -2445,7 +2495,7 @@ export const funnel = query({
         count: next.size,
         rate: firstCount > 0 ? next.size / firstCount : 0,
       });
-      qualified = next;
+      qualifiedAt = next;
     }
 
     return results;
@@ -2634,6 +2684,7 @@ export const configGet = query({
 ## packages/convex-analytics/src/component/internal_mutations.ts
 
 ```ts
+import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
@@ -2641,11 +2692,17 @@ import { granularitiesValidator } from "./validators.js";
 import { bucketStart, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
 
-const PRUNE_CAP = 10000;
+const MAINTENANCE_CAP = 500;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RETENTION_DAYS = 90;
 const DEFAULT_SESSION_IDLE_MS = 30 * 60 * 1000;
 const TOTAL = "";
+
+export function guardBackfillSize(eventCount: number): void {
+  if (eventCount > 50000) {
+    throw new Error("backfill requires at most 50000 retained events; existing rollups were preserved");
+  }
+}
 
 /** Read a numeric config value for a scope, falling back to a default. */
 async function readNumber(
@@ -2663,68 +2720,107 @@ async function readNumber(
   return Number.isFinite(n) ? n : fallback;
 }
 
-/** List every scope that has at least one config row (the scopes a cron should sweep). */
-async function configuredScopes(ctx: MutationCtx): Promise<string[]> {
-  const rows = await ctx.db.query("config").collect();
-  return [...new Set(rows.map((r) => r.scope))];
-}
+const SCOPE_BATCH = 100;
 
 /** Delete raw events past `retentionDays` for a scope. Rollups are kept forever. Idempotent. */
 export const prune = internalMutation({
-  args: { scope: v.optional(v.string()) },
+  args: { scope: v.optional(v.string()), afterScope: v.optional(v.string()) },
   returns: v.object({ deleted: v.number() }),
   handler: async (ctx, args) => {
-    const scopes = args.scope !== undefined ? [args.scope] : await configuredScopes(ctx);
-
-    const pruneScope = async (scope: string): Promise<number> => {
-      const retentionDays = await readNumber(
-        ctx,
-        scope,
-        "retentionDays",
-        DEFAULT_RETENTION_DAYS,
+    if (args.scope === undefined) {
+      const scopes = await ctx.db
+        .query("scopes")
+        .withIndex("by_scope", (q) =>
+          args.afterScope === undefined ? q : q.gt("scope", args.afterScope),
+        )
+        .take(SCOPE_BATCH);
+      await Promise.all(
+        scopes.map((row) =>
+          ctx.scheduler.runAfter(0, internal.internal_mutations.prune, {
+            scope: row.scope,
+          }),
+        ),
       );
-      const cutoff = Date.now() - retentionDays * DAY_MS;
-      const oldest = await ctx.db
-        .query("events")
-        .withIndex("by_scope_name_ts", (q) => q.eq("scope", scope))
-        .order("asc")
-        .take(PRUNE_CAP);
-      const toDelete = oldest.filter((e) => e.ts < cutoff);
-      await Promise.all(toDelete.map((e) => ctx.db.delete(e._id)));
-      return toDelete.length;
-    };
+      if (scopes.length === SCOPE_BATCH) {
+        await ctx.scheduler.runAfter(0, internal.internal_mutations.prune, {
+          afterScope: scopes[scopes.length - 1]!.scope,
+        });
+      }
+      return { deleted: 0 };
+    }
 
-    const counts = await Promise.all(scopes.map(pruneScope));
-    return { deleted: counts.reduce((a, b) => a + b, 0) };
+    const retentionDays = await readNumber(
+      ctx,
+      args.scope,
+      "retentionDays",
+      DEFAULT_RETENTION_DAYS,
+    );
+    const cutoff = Date.now() - retentionDays * DAY_MS;
+    const stale = await ctx.db
+      .query("events")
+      .withIndex("by_scope_ts", (q) => q.eq("scope", args.scope!).lt("ts", cutoff))
+      .take(MAINTENANCE_CAP);
+    await Promise.all(stale.map((event) => ctx.db.delete("events", event._id)));
+    if (stale.length === MAINTENANCE_CAP) {
+      await ctx.scheduler.runAfter(0, internal.internal_mutations.prune, {
+        scope: args.scope,
+      });
+    }
+    return { deleted: stale.length };
   },
 });
 
 /** Close sessions idle past `sessionIdleMs` (set `endTs`). Idempotent. */
 export const closeSessions = internalMutation({
-  args: { scope: v.optional(v.string()) },
+  args: { scope: v.optional(v.string()), afterScope: v.optional(v.string()) },
   returns: v.object({ closed: v.number() }),
   handler: async (ctx, args) => {
-    const scopes = args.scope !== undefined ? [args.scope] : await configuredScopes(ctx);
-
-    const closeScope = async (scope: string): Promise<number> => {
-      const idleMs = await readNumber(
-        ctx,
-        scope,
-        "sessionIdleMs",
-        DEFAULT_SESSION_IDLE_MS,
+    if (args.scope === undefined) {
+      const scopes = await ctx.db
+        .query("scopes")
+        .withIndex("by_scope", (q) =>
+          args.afterScope === undefined ? q : q.gt("scope", args.afterScope),
+        )
+        .take(SCOPE_BATCH);
+      await Promise.all(
+        scopes.map((row) =>
+          ctx.scheduler.runAfter(0, internal.internal_mutations.closeSessions, {
+            scope: row.scope,
+          }),
+        ),
       );
-      const cutoff = Date.now() - idleMs;
-      const open = await ctx.db
-        .query("sessions")
-        .withIndex("by_scope_lastTs", (q) => q.eq("scope", scope).lt("lastTs", cutoff))
-        .take(1000);
-      const stale = open.filter((s) => s.endTs === undefined);
-      await Promise.all(stale.map((s) => ctx.db.patch(s._id, { endTs: s.lastTs })));
-      return stale.length;
-    };
+      if (scopes.length === SCOPE_BATCH) {
+        await ctx.scheduler.runAfter(0, internal.internal_mutations.closeSessions, {
+          afterScope: scopes[scopes.length - 1]!.scope,
+        });
+      }
+      return { closed: 0 };
+    }
 
-    const counts = await Promise.all(scopes.map(closeScope));
-    return { closed: counts.reduce((a, b) => a + b, 0) };
+    const idleMs = await readNumber(
+      ctx,
+      args.scope,
+      "sessionIdleMs",
+      DEFAULT_SESSION_IDLE_MS,
+    );
+    const cutoff = Date.now() - idleMs;
+    const stale = await ctx.db
+      .query("sessions")
+      .withIndex("by_scope_endTs_lastTs", (q) =>
+        q.eq("scope", args.scope!).eq("endTs", undefined).lt("lastTs", cutoff),
+      )
+      .take(MAINTENANCE_CAP);
+    await Promise.all(
+      stale.map((session) =>
+        ctx.db.patch("sessions", session._id, { endTs: session.lastTs }),
+      ),
+    );
+    if (stale.length === MAINTENANCE_CAP) {
+      await ctx.scheduler.runAfter(0, internal.internal_mutations.closeSessions, {
+        scope: args.scope,
+      });
+    }
+    return { closed: stale.length };
   },
 });
 
@@ -2743,20 +2839,21 @@ export const backfill = internalMutation({
   handler: async (ctx, args) => {
     const grans = args.granularities.length > 0 ? args.granularities : (["day"] as const);
 
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_scope_name_ts", (q) =>
+        q.eq("scope", args.scope).eq("name", args.name),
+      )
+      .take(50001);
+    guardBackfillSize(events.length);
+
     const existing = await ctx.db
       .query("rollups")
       .withIndex("by_scope_name_dim_val", (q) =>
         q.eq("scope", args.scope).eq("name", args.name),
       )
       .collect();
-    await Promise.all(existing.map((r) => ctx.db.delete(r._id)));
-
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_scope_name_ts", (q) =>
-        q.eq("scope", args.scope).eq("name", args.name),
-      )
-      .take(50000);
+    await Promise.all(existing.map((r) => ctx.db.delete("rollups", r._id)));
 
     const counts = new Map<string, number>();
     const meta = new Map<

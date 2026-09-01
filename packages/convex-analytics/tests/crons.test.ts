@@ -1,9 +1,20 @@
 /// <reference types="vite/client" />
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { api, internal } from "../src/component/_generated/api.js";
+import crons from "../src/component/crons.js";
+import { guardBackfillSize } from "../src/component/internal_mutations.js";
 import { initConvexTest } from "./test-helpers.js";
 
 const D = (day: number) => Date.UTC(2026, 0, day, 10, 0, 0);
+
+describe("cron registration", () => {
+  it("registers session closure and event retention maintenance", () => {
+    expect(Object.keys(crons.crons)).toEqual([
+      "analytics:close-sessions",
+      "analytics:prune-events",
+    ]);
+  });
+});
 
 describe("configure / configSet", () => {
   it("persists retention/sampling/idle, inserting then patching", async () => {
@@ -60,15 +71,59 @@ describe("prune", () => {
     expect(await t.query(api.queries.metric, { scope: "s", name: "e" })).toBe(2);
   });
 
-  it("uses the default retention (90d) and sweeps all configured scopes", async () => {
+  it("uses the default retention (90d) and discovers zero-config scopes", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = initConvexTest();
+      const old = Date.now() - 200 * 86400000;
+      await t.mutation(api.mutations.track, {
+        scope: "s", name: "e", ts: old, dimensions: [], granularities: ["day"],
+      });
+      const res = await t.mutation(internal.internal_mutations.prune, {});
+      expect(res.deleted).toBe(0);
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      const page = await t.query(api.queries.list, {
+        scope: "s", name: "e", paginationOpts: { numItems: 10, cursor: null },
+      });
+      expect(page.page).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reschedules a full bounded deletion page", async () => {
     const t = initConvexTest();
-    await t.mutation(api.mutations.configSet, { scope: "s", key: "x", value: "y" });
     const old = Date.now() - 200 * 86400000;
-    await t.mutation(api.mutations.track, {
-      scope: "s", name: "e", ts: old, dimensions: [], granularities: ["day"],
+    await t.run(async (ctx) => {
+      await Promise.all(
+        Array.from({ length: 500 }, (_, seq) =>
+          ctx.db.insert("events", {
+            scope: "s", name: "e", props: {}, ts: old, seq,
+          }),
+        ),
+      );
     });
-    const res = await t.mutation(internal.internal_mutations.prune, {});
-    expect(res.deleted).toBe(1);
+    expect(
+      (await t.mutation(internal.internal_mutations.prune, { scope: "s" })).deleted,
+    ).toBe(500);
+  });
+
+  it("paginates scope discovery instead of collecting the registry", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = initConvexTest();
+      await t.run(async (ctx) => {
+        await Promise.all(
+          Array.from({ length: 101 }, (_, index) =>
+            ctx.db.insert("scopes", { scope: `scope-${String(index).padStart(3, "0")}` }),
+          ),
+        );
+      });
+      await t.mutation(internal.internal_mutations.prune, {});
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("falls back to the default when retentionDays is non-numeric, deletes nothing when fresh", async () => {
@@ -105,6 +160,24 @@ describe("closeSessions", () => {
     expect(idle!.endTs).toBe(old);
   });
 
+  it("reschedules a full bounded session page", async () => {
+    const t = initConvexTest();
+    const old = Date.now() - 60 * 60 * 1000;
+    await t.run(async (ctx) => {
+      await Promise.all(
+        Array.from({ length: 500 }, (_, index) =>
+          ctx.db.insert("sessions", {
+            scope: "s", sessionRef: `session-${index}`, startTs: old,
+            lastTs: old, eventCount: 1,
+          }),
+        ),
+      );
+    });
+    expect(
+      (await t.mutation(internal.internal_mutations.closeSessions, { scope: "s" })).closed,
+    ).toBe(500);
+  });
+
   it("is idempotent — a second run closes nothing more", async () => {
     const t = initConvexTest();
     await t.mutation(api.mutations.configure, { scope: "s", sessionIdleMs: 1 });
@@ -116,19 +189,53 @@ describe("closeSessions", () => {
     expect((await t.mutation(internal.internal_mutations.closeSessions, { scope: "s" })).closed).toBe(0);
   });
 
-  it("uses the default idle timeout across all scopes when scope omitted", async () => {
-    const t = initConvexTest();
-    await t.mutation(api.mutations.configSet, { scope: "s", key: "x", value: "y" });
-    await t.mutation(api.mutations.track, {
-      scope: "s", name: "e", sessionRef: "old", ts: Date.now() - 60 * 60 * 1000,
-      dimensions: [], granularities: ["day"],
-    });
-    const res = await t.mutation(internal.internal_mutations.closeSessions, {});
-    expect(res.closed).toBe(1);
+  it("paginates scope discovery for session maintenance", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = initConvexTest();
+      await t.run(async (ctx) => {
+        await Promise.all(
+          Array.from({ length: 101 }, (_, index) =>
+            ctx.db.insert("scopes", { scope: `scope-${String(index).padStart(3, "0")}` }),
+          ),
+        );
+      });
+      await t.mutation(internal.internal_mutations.closeSessions, {});
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the default idle timeout across zero-config scopes when scope omitted", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = initConvexTest();
+      await t.mutation(api.mutations.track, {
+        scope: "s", name: "e", sessionRef: "old", ts: Date.now() - 60 * 60 * 1000,
+        dimensions: [], granularities: ["day"],
+      });
+      const res = await t.mutation(internal.internal_mutations.closeSessions, {});
+      expect(res.closed).toBe(0);
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      const session = await t.run(async (ctx) =>
+        ctx.db.query("sessions").withIndex("by_scope_session", (q) =>
+          q.eq("scope", "s").eq("sessionRef", "old"),
+        ).unique(),
+      );
+      expect(session?.endTs).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
 describe("backfill", () => {
+  it("fails closed before replacing rollups when the retained input is truncated", () => {
+    expect(() => guardBackfillSize(50000)).not.toThrow();
+    expect(() => guardBackfillSize(50001)).toThrow(/existing rollups were preserved/);
+  });
+
   it("re-derives rollups from raw events (idempotent, replaces existing)", async () => {
     const t = initConvexTest();
     await t.mutation(api.mutations.track, {
