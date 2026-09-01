@@ -12,6 +12,7 @@ export default defineConfig({
         "src/component/mutations.ts",
         "src/component/queries.ts",
         "src/component/internal_mutations.ts",
+        "src/component/crons.ts",
         "src/component/http.ts",
         "src/component/validators.ts",
       ],

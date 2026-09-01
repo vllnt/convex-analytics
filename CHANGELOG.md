@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Register automatic session-closing and event-retention cron jobs, including zero-config scopes.
+- Seek expired events by `(scope, ts)`, page scope discovery, and bound/reschedule maintenance at
+  500 rows per transaction.
+- Preserve valid rollups when backfill input exceeds its supported 50,000-event bound instead of
+  deleting them and silently rebuilding from truncated input.
+- Count funnel subjects through later valid repeated steps, isolate rate limits and counters with
+  collision-safe tuple keys, and reopen sessions without moving `lastTs` backward.
+
 ### Changed
 
 - Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a

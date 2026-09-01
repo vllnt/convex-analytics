@@ -6,7 +6,7 @@ import { DirectAggregate } from "@convex-dev/aggregate";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
 import { propsValidator, granularitiesValidator } from "./validators.js";
-import { bucketStart, valKey } from "../shared.js";
+import { bucketStart, tupleKey, valKey } from "../shared.js";
 import type { Granularity, Scalar } from "../shared.js";
 
 type AggregateType = { Key: number; Id: string; Namespace: string };
@@ -24,6 +24,16 @@ const rateLimiter = new RateLimiter(components.rateLimiter as never, {
 });
 
 const TOTAL = "";
+
+async function ensureScope(ctx: MutationCtx, scope: string): Promise<void> {
+  const existing = await ctx.db
+    .query("scopes")
+    .withIndex("by_scope", (q) => q.eq("scope", scope))
+    .unique();
+  if (existing === null) {
+    await ctx.db.insert("scopes", { scope });
+  }
+}
 
 /** Increment one rollup row `(scope,name,gran,bucket,dim,val)` by 1, inserting if absent. */
 async function bumpRollup(
@@ -84,7 +94,9 @@ export const track = mutation({
     const grans = args.granularities.length > 0 ? args.granularities : (["day"] as const);
 
     if (args.sessionRef !== undefined) {
-      const rl = await rateLimiter.limit(ctx, "trackEvent", { key: args.sessionRef });
+      const rl = await rateLimiter.limit(ctx, "trackEvent", {
+        key: tupleKey(scope, args.sessionRef),
+      });
       if (!rl.ok) {
         return "dropped";
       }
@@ -118,6 +130,8 @@ export const track = mutation({
     }
     const seq = sessionDoc ? sessionDoc.eventCount : 0;
 
+    await ensureScope(ctx, scope);
+
     const eventId = await ctx.db.insert("events", {
       scope,
       name: args.name,
@@ -132,7 +146,8 @@ export const track = mutation({
     if (args.sessionRef !== undefined) {
       if (sessionDoc) {
         await ctx.db.patch("sessions", sessionDoc._id, {
-          lastTs: ts,
+          lastTs: Math.max(ts, sessionDoc.lastTs),
+          endTs: undefined,
           eventCount: sessionDoc.eventCount + 1,
           subjectRef: args.subjectRef ?? sessionDoc.subjectRef,
         });
@@ -193,9 +208,9 @@ export const track = mutation({
     await aggregate.insert(ctx, {
       key: ts,
       id: eventId as string,
-      namespace: `${scope}:${args.name}`,
+      namespace: tupleKey(scope, args.name),
     });
-    await counter.add(ctx, `${scope}:${args.name}`);
+    await counter.add(ctx, tupleKey(scope, args.name));
 
     return "tracked";
   },
@@ -223,6 +238,7 @@ export const configSet = mutation({
   args: { scope: v.string(), key: v.string(), value: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await ensureScope(ctx, args.scope);
     await upsertConfig(ctx, args.scope, args.key, args.value);
     return null;
   },
@@ -237,6 +253,7 @@ export const configure = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await ensureScope(ctx, args.scope);
     const entries: Array<[string, string]> = [];
     if (args.retentionDays !== undefined) {
       entries.push(["retentionDays", String(args.retentionDays)]);

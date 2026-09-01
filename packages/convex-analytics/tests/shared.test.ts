@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bucketStart, bucketSize, valKey } from "../src/shared.js";
+import { bucketStart, bucketSize, tupleKey, valKey } from "../src/shared.js";
 
 describe("shared helpers", () => {
   it("bucketStart truncates to minute, hour and day boundaries", () => {
@@ -13,6 +13,10 @@ describe("shared helpers", () => {
     expect(bucketSize("minute")).toBe(60000);
     expect(bucketSize("hour")).toBe(3600000);
     expect(bucketSize("day")).toBe(86400000);
+  });
+
+  it("tupleKey keeps delimiter-bearing scope/name pairs distinct", () => {
+    expect(tupleKey("a:b", "c")).not.toBe(tupleKey("a", "b:c"));
   });
 
   it("valKey stringifies scalars and maps null to 'null'", () => {

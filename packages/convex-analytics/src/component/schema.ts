@@ -23,6 +23,7 @@ export default defineSchema({
     dedupeKey: v.optional(v.string()),
   })
     .index("by_scope_name_ts", ["scope", "name", "ts"])
+    .index("by_scope_ts", ["scope", "ts"])
     .index("by_scope_subject_ts", ["scope", "subjectRef", "ts"])
     .index("by_scope_session_ts", ["scope", "sessionRef", "ts"])
     .index("by_dedupe", ["scope", "dedupeKey"]),
@@ -66,7 +67,12 @@ export default defineSchema({
     eventCount: v.number(),
   })
     .index("by_scope_session", ["scope", "sessionRef"])
-    .index("by_scope_lastTs", ["scope", "lastTs"]),
+    .index("by_scope_lastTs", ["scope", "lastTs"])
+    .index("by_scope_endTs_lastTs", ["scope", "endTs", "lastTs"]),
+
+  scopes: defineTable({
+    scope: v.string(),
+  }).index("by_scope", ["scope"]),
 
   config: defineTable({
     scope: v.string(),

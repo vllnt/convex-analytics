@@ -14,7 +14,7 @@ import {
   eventPage,
   distributionView,
 } from "./validators.js";
-import { bucketStart, bucketSize, valKey } from "../shared.js";
+import { bucketStart, bucketSize, tupleKey, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
 
 const counter = new ShardedCounter(components.shardedCounter as never, {
@@ -37,7 +37,7 @@ export const metric = query({
     const val = args.where ? valKey(args.where.val) : TOTAL;
 
     if (!args.range && !args.where) {
-      return await counter.count(ctx, `${args.scope}:${args.name}`);
+      return await counter.count(ctx, tupleKey(args.scope, args.name));
     }
 
     const rollups = await ctx.db
@@ -220,32 +220,34 @@ export const funnel = query({
             q.eq("scope", args.scope).eq("name", step).gte("ts", from).lte("ts", to),
           )
           .take(10000);
-        const firstTs = new Map<string, number>();
-        for (const e of events) {
-          if (e.subjectRef === undefined) continue;
-          const prev = firstTs.get(e.subjectRef);
-          if (prev === undefined || e.ts < prev) {
-            firstTs.set(e.subjectRef, e.ts);
-          }
+        const timestamps = new Map<string, number[]>();
+        for (const event of events) {
+          if (event.subjectRef === undefined) continue;
+          const subjectTimestamps = timestamps.get(event.subjectRef) ?? [];
+          subjectTimestamps.push(event.ts);
+          timestamps.set(event.subjectRef, subjectTimestamps);
         }
-        return firstTs;
+        return timestamps;
       }),
     );
 
     const results: Array<{ name: string; count: number; rate: number }> = [];
-    let qualified = new Set(stepSubjects[0]!.keys());
-    let firstCount = qualified.size;
+    let qualifiedAt = new Map(
+      [...stepSubjects[0]!.entries()].map(([subject, timestamps]) => [
+        subject,
+        timestamps[0]!,
+      ]),
+    );
+    const firstCount = qualifiedAt.size;
     results.push({ name: args.steps[0]!, count: firstCount, rate: 1 });
 
     for (let i = 1; i < args.steps.length; i++) {
-      const prevTimes = stepSubjects[i - 1]!;
       const thisTimes = stepSubjects[i]!;
-      const next = new Set<string>();
-      for (const subject of qualified) {
-        const prevTs = prevTimes.get(subject);
-        const thisTs = thisTimes.get(subject);
-        if (prevTs !== undefined && thisTs !== undefined && thisTs >= prevTs) {
-          next.add(subject);
+      const next = new Map<string, number>();
+      for (const [subject, previousTs] of qualifiedAt) {
+        const thisTs = thisTimes.get(subject)?.find((timestamp) => timestamp >= previousTs);
+        if (thisTs !== undefined) {
+          next.set(subject, thisTs);
         }
       }
       results.push({
@@ -253,7 +255,7 @@ export const funnel = query({
         count: next.size,
         rate: firstCount > 0 ? next.size / firstCount : 0,
       });
-      qualified = next;
+      qualifiedAt = next;
     }
 
     return results;
