@@ -20,6 +20,7 @@ pnpm test
 ## Development Workflow
 
 1. **Create a branch** from `main`:
+
    ```bash
    git checkout -b feat/my-feature   # or fix/, chore/, docs/
    ```
@@ -27,6 +28,7 @@ pnpm test
 2. **Make your changes** — see the package structure in `AGENTS.md` or `AGENTS.md`.
 
 3. **Run checks**:
+
    ```bash
    pnpm typecheck   # Type-check all packages
    pnpm lint        # Lint all packages
@@ -35,6 +37,7 @@ pnpm test
    ```
 
 4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/):
+
    ```
    feat(analytics): add new breakdown dimension
    fix(analytics): handle empty timeseries response
@@ -46,12 +49,12 @@ pnpm test
 
 ## Branch Naming
 
-| Prefix | Use |
-|--------|-----|
-| `feat/` | New features |
-| `fix/` | Bug fixes |
+| Prefix   | Use                   |
+| -------- | --------------------- |
+| `feat/`  | New features          |
+| `fix/`   | Bug fixes             |
 | `chore/` | Maintenance, deps, CI |
-| `docs/` | Documentation only |
+| `docs/`  | Documentation only    |
 
 ## Code Style
 
@@ -90,15 +93,16 @@ See `AGENTS.md` for the full package layout, key patterns, and common pitfalls.
 
 When changing public API or behavior, update the relevant files in `docs/`:
 
-| Change | Update |
-|--------|--------|
+| Change                         | Update                  |
+| ------------------------------ | ----------------------- |
 | New endpoint or changed params | `docs/api-reference.md` |
-| Client SDK method change | `docs/client-sdk.md` |
-| Schema change | `docs/schema.md` |
-| New cron or write path change | `docs/architecture.md` |
-| New scoping field | `docs/multi-product.md` |
+| Client SDK method change       | `docs/client-sdk.md`    |
+| Schema change                  | `docs/schema.md`        |
+| New cron or write path change  | `docs/architecture.md`  |
+| New scoping field              | `docs/multi-product.md` |
 
-After updating `docs/`, also update `llms-full.txt` (concatenation of all docs).
+After updating `docs/`, also update the maintained root `llms.txt` index when links or
+package context change. Do not generate a second index or a full-source documentation bundle.
 
 ## Community
 

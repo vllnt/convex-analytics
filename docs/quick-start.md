@@ -65,10 +65,12 @@ const trend = await analytics.timeseries(ctx, "signup", {
 
 ## 6. (Optional) REST access
 
-Configure API keys, then call the REST surface:
+First change the mount to `app.use(analytics, { httpPrefix: "/analytics" })` and deploy.
+Without `httpPrefix`, the component's HTTP routes are not exposed.
+Configure API keys from a trusted internal/admin-only mutation, then call the REST surface:
 
 ```ts
-// In a Convex mutation, via the client's configSet (or component config mutation)
+// The client has no configSet method: use the component mutation.
 await ctx.runMutation(components.analytics.mutations.configSet, {
   scope: "default",
   key: "apiKeys",
@@ -78,7 +80,7 @@ await ctx.runMutation(components.analytics.mutations.configSet, {
 
 ```bash
 curl -H "x-api-key: your-key" \
-  "https://your-deployment.convex.site/metric?name=signup"
+  "https://your-deployment.convex.site/analytics/metric?name=signup"
 ```
 
 See the [REST API](./api-reference.md) for all five routes.
@@ -88,7 +90,9 @@ See the [REST API](./api-reference.md) for all five routes.
 ```ts
 import { webDimensions, trackPageview } from "@vllnt/convex-analytics/web";
 
-const web = new AnalyticsClient(components.analytics, { dimensions: webDimensions });
+const web = new AnalyticsClient(components.analytics, {
+  dimensions: webDimensions,
+});
 await trackPageview(web, ctx, { path: "/pricing", headers: request.headers });
 ```
 

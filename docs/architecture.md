@@ -2,7 +2,9 @@
 
 ## Write path — rollup-on-write
 
-`track` does the aggregation as the event lands, so reads stay O(1) (no rollup lag).
+`track` aggregates as the event lands (no rollup lag). Unfiltered lifetime metrics read a
+fixed-shard counter; ranged/filtered metrics, top values, and time series scan matching rollup
+rows. They avoid raw-event scans but are not generally O(1).
 
 ```
 track(ctx, name, opts)
@@ -33,11 +35,11 @@ unbounded total) — `metric`, `top`, and `timeseries` never scan raw events. `f
 
 ## Child components
 
-| Component | Package | Role |
-|-----------|---------|------|
-| aggregate | `@convex-dev/aggregate` | Range counts, namespaced `scope:name`. |
-| shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `scope:name` (16 shards). |
-| rateLimiter | `@convex-dev/rate-limiter` | Per-`sessionRef` token bucket (100/min, burst 10). |
+| Component      | Package                       | Role                                               |
+| -------------- | ----------------------------- | -------------------------------------------------- |
+| aggregate      | `@convex-dev/aggregate`       | Range counts, namespaced `scope:name`.             |
+| shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `scope:name` (16 shards).           |
+| rateLimiter    | `@convex-dev/rate-limiter`    | Per-`sessionRef` token bucket (100/min, burst 10). |
 
 Mounted in `convex.config.ts`:
 
@@ -52,10 +54,10 @@ component.use(rateLimiter);
 
 Both run inside the component and are idempotent.
 
-| Cron | Schedule | What it does |
-|------|----------|--------------|
-| `prune` | Daily | Deletes raw events older than `retentionDays` per scope (rollups kept forever). Capped per run. |
-| `closeSessions` | Periodic | Sets `endTs` on sessions idle past `sessionIdleMs`. |
+| Cron            | Schedule | What it does                                                                                    |
+| --------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `prune`         | Daily    | Deletes raw events older than `retentionDays` per scope (rollups kept forever). Capped per run. |
+| `closeSessions` | Periodic | Sets `endTs` on sessions idle past `sessionIdleMs`.                                             |
 
 `backfill` is a non-cron internal mutation that re-derives a `(scope, name)`'s rollups from
 the retained raw events — useful after changing dimensions.
