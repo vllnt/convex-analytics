@@ -1,5 +1,8 @@
 # convex-analytics rebuild — design (generic core + opt-in web preset)
 
+Historical design, not the current API contract. See [Client SDK](client-sdk.md): the shipped
+client has no `propsValidator` option and the ingest rate-limit parameters are fixed.
+
 Rebuild the web-locked 0.1.0 into a **generic, configurable, domain-neutral**, rollup-on-write
 analytics component. Any event, any dimension, any domain. **Web is an opt-in preset, never baked in.**
 "Handle more use cases" = the same rich verb set (timeseries, top, funnel, retention, uniques) working
@@ -48,22 +51,23 @@ passed per call from the client (no per-track config read).
 
 ## API verbs (generic; this is the "more use cases")
 
-| Verb | Use |
-|------|-----|
-| `track(ctx, name, { subjectRef?, sessionRef?, props?, ts?, scope?, dedupeKey? })` | ingest — rollup-on-write + raw event + counter; sampling + dedupe applied |
-| `metric(ctx, name, { range?, scope?, where? })` | total count over a range, optionally filtered by a dimension value |
-| `top(ctx, name, dimension, { range?, limit?, scope? })` | top values of a dimension (breakdown) |
-| `timeseries(ctx, name, { granularity, range, where?, scope? })` | bucketed counts |
-| `uniques(ctx, { range, granularity, scope? })` | DAU/WAU/MAU from subjects |
-| `funnel(ctx, steps[], { range, scope? })` | ordered step conversion (generic) |
-| `retention(ctx, { cohortRange, periods, scope? })` | cohort return rates (generic) |
-| `distribution(ctx, name, measure, { buckets, range?, where?, scope? })` | histogram over a numeric measure (declared upper-bound bins + overflow, with count/sum) |
-| `list(ctx, name, paginationOpts, { scope? })` | paginated raw events |
-| `configure(ctx, { retentionDays?, sampleRate? })` | persist cron config |
+| Verb                                                                              | Use                                                                                     |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `track(ctx, name, { subjectRef?, sessionRef?, props?, ts?, scope?, dedupeKey? })` | ingest — rollup-on-write + raw event + counter; sampling + dedupe applied               |
+| `metric(ctx, name, { range?, scope?, where? })`                                   | total count over a range, optionally filtered by a dimension value                      |
+| `top(ctx, name, dimension, { range?, limit?, scope? })`                           | top values of a dimension (breakdown)                                                   |
+| `timeseries(ctx, name, { granularity, range, where?, scope? })`                   | bucketed counts                                                                         |
+| `uniques(ctx, { range, granularity, scope? })`                                    | DAU/WAU/MAU from subjects                                                               |
+| `funnel(ctx, steps[], { range, scope? })`                                         | ordered step conversion (generic)                                                       |
+| `retention(ctx, { cohortRange, periods, scope? })`                                | cohort return rates (generic)                                                           |
+| `distribution(ctx, name, measure, { buckets, range?, where?, scope? })`           | histogram over a numeric measure (declared upper-bound bins + overflow, with count/sum) |
+| `list(ctx, name, paginationOpts, { scope? })`                                     | paginated raw events                                                                    |
+| `configure(ctx, { retentionDays?, sampleRate? })`                                 | persist cron config                                                                     |
 
 ## Web preset — opt-in (`@vllnt/convex-analytics/web`)
 
 A config bundle + host-side helpers (NOT in the sandboxed component):
+
 - `webDimensions = ["path","referrer","device","browser","os","country","utmSource","utmMedium","utmCampaign"]`
   — pass to `dimensions` to opt in.
 - helpers: `parseUserAgent(ua) → {device,browser,os}`, `geoFromHeaders(h) → {country,region,city}`,
@@ -83,7 +87,7 @@ A config bundle + host-side helpers (NOT in the sandboxed component):
 - vitest → **edge-runtime** + `coverage.thresholds` 100 + `test:coverage` script; **register the child
   components** in tests so `track` is E2E-testable.
 - package.json: `engines`, `publishConfig`, `author` object, `funding`, `sideEffects`, `preversion`,
-  `generate:llms`, `homepage`, `bugs`, `repository`, the exports map (`./convex.config`,
+  `homepage`, `bugs`, `repository`, the exports map (`./convex.config`,
   `./_generated/component.js`, `./test`, `./web`).
 - `convex.json`; the tsconfig set; keep the monorepo (turbo) but each package green.
 - HTTP layer stays optional; genericize `/track` (move UA/geo parsing to the web preset).
@@ -93,7 +97,7 @@ A config bundle + host-side helpers (NOT in the sandboxed component):
 - README: the generic-core-vs-web-preset split, the FULL config surface, the verb table, an honest
   config section (fixes the current "documents config the code ignores" gap).
 - `docs/`: `schema.md` (generic), `client-sdk.md` (real config + verbs), `config.md`, `multi-product.md`
-  (scope), `web-preset.md`. `llms.txt`/`llms-full.txt`, `AGENTS.md`/`AGENTS.md`.
+  (scope), `web-preset.md`. Maintain one root `llms.txt` index.
 
 ## Out of scope (record the call)
 
