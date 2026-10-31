@@ -11,7 +11,8 @@ new AnalyticsClient<TProps>(component: unknown, config?: AnalyticsConfig)
 ```
 
 `component` comes from `components.analytics` after mounting. `TProps` types the `props`
-passed to `track` (defaults to `Record<string, Scalar>`).
+passed to `track` (defaults to `Record<string, Scalar>`). This is compile-time typing;
+validate untrusted input in host functions. There is no `propsValidator` constructor option.
 
 ### AnalyticsConfig
 
@@ -19,23 +20,23 @@ Stored on the client and applied to every call. All optional.
 
 ```ts
 interface AnalyticsConfig {
-  scope?: string;            // default "default"
-  dimensions?: string[];     // default []
+  scope?: string; // default "default"
+  dimensions?: string[]; // default []
   granularities?: ("minute" | "hour" | "day")[]; // default ["day"]
-  retentionDays?: number;    // default 90
-  sampleRate?: number;       // 0..1, default 1
-  sessionIdleMs?: number;    // default 1_800_000 (30m)
+  retentionDays?: number; // default 90
+  sampleRate?: number; // 0..1, default 1
+  sessionIdleMs?: number; // default 1_800_000 (30m)
 }
 ```
 
-| Option | Default | Applied | Purpose |
-|--------|---------|---------|---------|
-| `scope` | `"default"` | per call | Multi-tenant partition. Overridable per call via `opts.scope`. |
-| `dimensions` | `[]` | per `track` | Prop keys to roll up on. Empty = count by event name only. |
-| `granularities` | `["day"]` | per `track` | Rollup bucket sizes. `"minute"` for short live windows. |
-| `retentionDays` | `90` | via `configure` | Raw-event TTL in days. Rollups kept forever. |
-| `sampleRate` | `1` | per `track` | Fraction of events kept at ingest. |
-| `sessionIdleMs` | `1_800_000` | via `configure` | Idle timeout before a session is closed. |
+| Option          | Default     | Applied         | Purpose                                                        |
+| --------------- | ----------- | --------------- | -------------------------------------------------------------- |
+| `scope`         | `"default"` | per call        | Multi-tenant partition. Overridable per call via `opts.scope`. |
+| `dimensions`    | `[]`        | per `track`     | Prop keys to roll up on. Empty = count by event name only.     |
+| `granularities` | `["day"]`   | per `track`     | Rollup bucket sizes. `"minute"` for short live windows.        |
+| `retentionDays` | `90`        | via `configure` | Raw-event TTL in days. Rollups kept forever.                   |
+| `sampleRate`    | `1`         | per `track`     | Fraction of events kept at ingest.                             |
+| `sessionIdleMs` | `1_800_000` | via `configure` | Idle timeout before a session is closed.                       |
 
 `dimensions`, `granularities`, and `sampleRate` are passed into each `track` call. The
 cron-relevant values (`retentionDays`, `sampleRate`, `sessionIdleMs`) are persisted to the
@@ -63,7 +64,7 @@ track(
 Ingest one event. Rollup-on-write: increments the total + each host-declared dimension
 present in `props`, writes the raw event, and bumps the sharded counter and aggregate.
 
-- **Rate limit** — when `sessionRef` is set, a per-session token bucket applies; over-limit returns `"dropped"`.
+- **Rate limit** — when `sessionRef` is set, a token bucket per `(scope, sessionRef)` refills at 100 events/minute with capacity 10; over-limit returns `"dropped"`. These limits are fixed in the component, not configurable through this client. Omitting `sessionRef` bypasses this limiter.
 - **Sampling** — when `sampleRate < 1`, a fraction of events return `"dropped"`.
 - **Dedupe** — when `dedupeKey` is set and an event already exists for it in the scope, returns `"duplicate"`.
 - Otherwise returns `"tracked"`.
@@ -182,23 +183,63 @@ type Scalar = string | number | boolean | null;
 type Props = Record<string, Scalar>;
 type Granularity = "minute" | "hour" | "day";
 
-interface Range { from?: number; to?: number; }          // epoch ms
-interface Where { dim: string; val: Scalar; }            // one dimension == one value
-interface TopRow { value: string; count: number; }
-interface TimeseriesPoint { bucket: number; count: number; }
+interface Range {
+  from?: number;
+  to?: number;
+} // epoch ms
+interface Where {
+  dim: string;
+  val: Scalar;
+} // one dimension == one value
+interface TopRow {
+  value: string;
+  count: number;
+}
+interface TimeseriesPoint {
+  bucket: number;
+  count: number;
+}
 interface UniquesView {
-  dau: number; wau: number; mau: number;
+  dau: number;
+  wau: number;
+  mau: number;
   trend: Array<{ bucket: number; uniques: number }>;
 }
-interface FunnelStep { name: string; count: number; rate: number; }
-interface RetentionCohort { cohort: number; size: number; retained: number[]; }
-interface DistributionBin { upper: number; count: number; }
-interface DistributionView { bins: DistributionBin[]; overflow: number; count: number; sum: number; }
-interface EventView {
-  _id: string; _creationTime: number;
-  scope: string; name: string;
-  subjectRef?: string; sessionRef?: string;
-  props: Props; ts: number; seq: number; dedupeKey?: string;
+interface FunnelStep {
+  name: string;
+  count: number;
+  rate: number;
 }
-interface EventPage { page: EventView[]; isDone: boolean; continueCursor: string; }
+interface RetentionCohort {
+  cohort: number;
+  size: number;
+  retained: number[];
+}
+interface DistributionBin {
+  upper: number;
+  count: number;
+}
+interface DistributionView {
+  bins: DistributionBin[];
+  overflow: number;
+  count: number;
+  sum: number;
+}
+interface EventView {
+  _id: string;
+  _creationTime: number;
+  scope: string;
+  name: string;
+  subjectRef?: string;
+  sessionRef?: string;
+  props: Props;
+  ts: number;
+  seq: number;
+  dedupeKey?: string;
+}
+interface EventPage {
+  page: EventView[];
+  isDone: boolean;
+  continueCursor: string;
+}
 ```

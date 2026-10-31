@@ -75,7 +75,7 @@ owner cuts the first stable release** (`stable-release` below); README documents
 generic-core-vs-web-preset split + the predefined-vs-export boundary.
 
 - [-] first-release.1 Name + wire the 2nd real consumer (stranger test) at 100% E2E → moved to `dogfood.1` (the 2nd consumer is validated by dogfooding the public canary, not a precondition of it)
-- [x] first-release.2 Docs — README documents the generic-core-vs-web-preset split, the full config surface + defaults, the predefined-vs-export boundary (*What it serves*), and the events-vs-analytics distinction (authoritative in-app aggregate, complements a warehouse); `llms-full.txt` regenerated
+- [x] first-release.2 Docs — README documents the generic-core-vs-web-preset split, the full config surface + defaults, the predefined-vs-export boundary (*What it serves*), and the events-vs-analytics distinction (authoritative in-app aggregate, complements a warehouse)
 - [x] first-release.3 Adopt the fleet-standard `publish.yml` **canary** job (replaced the disabled `workflow_dispatch` stub) — monorepo-aware (publishes `@vllnt/convex-analytics` + `convex-analytics-mcp` at pinned `0.1.0`), gated on `CANARY_ENABLED`, OIDC `--provenance`, `0.1.0-canary.<sha>` on push to `main`; `workflow_dispatch` for stable. **Owner runtime step:** flip `CANARY_ENABLED=true` + make the repo public to start canary publishing.
 
 ## dogfood [PLANNED]

@@ -1,6 +1,6 @@
 # @vllnt/convex-analytics
 
-> A generic, configurable, embedded analytics component for Convex — any event, any dimension, any domain — with rollup-on-write so reads stay O(1). Mount via `app.use()` in any Convex app.
+> A generic, configurable, embedded analytics component for Convex — any event, any dimension, any domain — with rollup-on-write for reactive aggregate reads. Only unfiltered lifetime metrics use fixed-shard counter reads; other aggregate reads scale with matching rollups. Mount via `app.use()` in any Convex app.
 
 The component owns a standardized, typed schema (events, rollups, subjects, sessions,
 config); host data enters only as opaque refs (`subjectRef`, `sessionRef`) and host-typed

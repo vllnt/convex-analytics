@@ -46,8 +46,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:ci": "tsc --noEmit",
     "lint": "pnpm --dir ../.. check:agents && eslint src/",
-    "generate:llms": "node scripts/generate-llms.mjs",
-    "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck && pnpm generate:llms",
+    "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck",
     "codegen": "node scripts/codegen.mjs",
     "build:codegen": "pnpm codegen && pnpm build"
   },
