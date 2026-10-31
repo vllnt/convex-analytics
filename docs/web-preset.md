@@ -12,13 +12,25 @@ Import: `@vllnt/convex-analytics/web`. Source: `packages/convex-analytics/src/we
 import { AnalyticsClient } from "@vllnt/convex-analytics";
 import { webDimensions } from "@vllnt/convex-analytics/web";
 
-const analytics = new AnalyticsClient(components.analytics, { dimensions: webDimensions });
+const analytics = new AnalyticsClient(components.analytics, {
+  dimensions: webDimensions,
+});
 ```
 
 `webDimensions` is the standard web rollup set:
 
 ```ts
-["path", "referrer", "device", "browser", "os", "country", "utmSource", "utmMedium", "utmCampaign"]
+[
+  "path",
+  "referrer",
+  "device",
+  "browser",
+  "os",
+  "country",
+  "utmSource",
+  "utmMedium",
+  "utmCampaign",
+];
 ```
 
 Pass it to the client's `dimensions` config to roll up on those prop keys. Off by default —
