@@ -1,6 +1,6 @@
 {
   "name": "@vllnt/convex-analytics",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Generic, configurable analytics component for Convex \u2014 any event, any dimension, any domain; rollup-on-write with funnels, retention, uniques",
   "license": "MIT",
   "type": "module",
