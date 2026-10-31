@@ -4,7 +4,7 @@
   "description": "Generic, configurable analytics component for Convex \u2014 any event, any dimension, any domain; rollup-on-write with funnels, retention, uniques",
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@10.34.8",
   "main": "./dist/client/index.js",
   "module": "./dist/client/index.js",
   "types": "./dist/client/index.d.ts",

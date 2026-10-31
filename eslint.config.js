@@ -4,25 +4,6 @@ import tseslint from "typescript-eslint";
 const LOGGER_MESSAGE =
   "Use @vllnt/logger instead. Import createConvexLogger from '@vllnt/logger/convex' for Convex functions, or createBackendLogger from '@vllnt/logger' for Node.js.";
 
-function remapConvexPaths(config) {
-  if (!config.files) return config;
-  return {
-    ...config,
-    files: config.files.map((f) =>
-      f
-        .replace("**/convex/**", "**/src/component/**")
-        .replace("**/convex/", "**/src/component/"),
-    ),
-    ...(config.ignores && {
-      ignores: config.ignores.map((f) =>
-        f
-          .replace("**/convex/**", "**/src/component/**")
-          .replace("**/convex/", "**/src/component/"),
-      ),
-    }),
-  };
-}
-
 export default [
   // TypeScript parser for all TS files
   {
@@ -32,7 +13,7 @@ export default [
     },
   },
 
-  ...convex.map(remapConvexPaths),
+  ...convex,
 
   {
     rules: {

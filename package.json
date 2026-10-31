@@ -3,7 +3,7 @@
   "license": "MIT",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@10.34.8",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "build": "turbo run build",
@@ -11,12 +11,14 @@
     "lint": "pnpm check:agents && turbo run lint",
     "typecheck": "turbo run typecheck",
     "check:agents": "node -e \"const f=require('node:fs');if(!f.existsSync('AGENTS.md')||f.existsSync('CLAUDE.md')||f.existsSync('.claude'))process.exit(1)\"",
-    "codegen": "pnpm --filter @vllnt/convex-analytics codegen"
+    "codegen": "pnpm --filter @vllnt/convex-analytics codegen",
+    "typecheck:ci": "turbo run typecheck:ci",
+    "test:coverage": "turbo run test:coverage"
   },
   "engines": {
     "npm": "please-use-pnpm",
     "yarn": "please-use-pnpm",
-    "pnpm": ">=9.0.0"
+    "pnpm": ">=10.0.0"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@7.0.2",
@@ -24,9 +26,17 @@
     "convex": "^1.48.0",
     "eslint": "^9.39.5",
     "turbo": "^2.11.10",
+    "typescript-eslint": "^8.72.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "pnpm": {
+    "minimumReleaseAge": 10080,
+    "minimumReleaseAgeExclude": [
+      "@vllnt/*"
+    ],
+    "ignoredBuiltDependencies": [
+      "esbuild"
+    ],
     "overrides": {
       "@asamuzakjp/css-color": "7.1.7",
       "@convex-dev/rate-limiter": "0.4.2",
