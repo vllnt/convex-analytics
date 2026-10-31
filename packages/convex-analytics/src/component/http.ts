@@ -1,9 +1,9 @@
 import { httpRouter } from "convex/server";
 import { ConvexError } from "convex/values";
-import { httpAction } from "./_generated/server";
-import type { ActionCtx } from "./_generated/server";
+import { httpAction } from "./_generated/server.js";
+import type { ActionCtx } from "./_generated/server.js";
 import { assertProps } from "./validators.js";
-import { api } from "./_generated/api";
+import { api } from "./_generated/api.js";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {

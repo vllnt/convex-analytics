@@ -1,6 +1,6 @@
-import { mutation } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
-import { components } from "./_generated/api";
+import { mutation } from "./_generated/server.js";
+import type { MutationCtx } from "./_generated/server.js";
+import { components } from "./_generated/api.js";
 import { v } from "convex/values";
 import { DirectAggregate } from "@convex-dev/aggregate";
 import { ShardedCounter } from "@convex-dev/sharded-counter";

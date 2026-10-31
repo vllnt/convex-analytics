@@ -1,7 +1,7 @@
-import { query } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
-import { components } from "./_generated/api";
+import { query } from "./_generated/server.js";
+import type { QueryCtx } from "./_generated/server.js";
+import type { Doc } from "./_generated/dataModel.js";
+import { components } from "./_generated/api.js";
 import { v } from "convex/values";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 import {
