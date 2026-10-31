@@ -185,7 +185,7 @@ export const backfill = internalMutation({
         const bucket = bucketStart(e.ts, gran);
         bump(gran, bucket, TOTAL, TOTAL);
         for (const dim of args.dimensions) {
-          if (dim in e.props) {
+          if (Object.hasOwn(e.props, dim)) {
             bump(gran, bucket, dim, valKey(e.props[dim]!));
           }
         }

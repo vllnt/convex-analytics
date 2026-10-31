@@ -70,7 +70,8 @@ Per-subject lifecycle, for uniques and retention. Upserted on every event that c
 | Index | Fields | Purpose |
 |-------|--------|---------|
 | `by_scope_subject` | [scope, subjectRef] | Direct lookup / upsert. |
-| `by_scope_firstSeen` | [scope, firstSeen] | Cohort (retention) and uniques scans. |
+| `by_scope_firstSeen` | [scope, firstSeen] | Cohort (retention) scans. |
+| `by_scope_lastSeen` | [scope, lastSeen] | Uniques: loads only subjects active in the range. |
 
 ## sessions
 

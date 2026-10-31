@@ -197,6 +197,8 @@ Thin reactive wrappers over the host's re-exported query refs (`metric`, `top`, 
 - Auth-agnostic mount — the host gates access and passes opaque `subjectRef` / `sessionRef` in.
 - Tables are sandboxed; the host reaches them only through the exported functions.
 - REST endpoints require an `x-api-key` header, compared timing-safe.
+- Invalid input (empty strings, `NaN` / infinite timestamps, non-scalar props) is rejected with a typed `ConvexError`; see [docs/api-reference.md](docs/api-reference.md#input-errors).
+- The component never logs event data. Props and refs are stored as given, so keep personal data out of them (the web preset stores `path`, `referrer`, and geo as received).
 
 See [docs/architecture.md](docs/architecture.md).
 

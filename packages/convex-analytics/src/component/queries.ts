@@ -1,4 +1,6 @@
 import { query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
@@ -13,6 +15,9 @@ import {
   retentionCohort,
   eventPage,
   distributionView,
+  assertCount,
+  assertRange,
+  invalidInput,
 } from "./validators.js";
 import { bucketStart, bucketSize, tupleKey, valKey } from "../shared.js";
 import type { Granularity } from "../shared.js";
@@ -22,6 +27,32 @@ const counter = new ShardedCounter(components.shardedCounter as never, {
 });
 
 const TOTAL = "";
+
+/**
+ * Rollup rows for `(scope, name, granularity)` with `bucket` inside the range, read through
+ * the index so only buckets in range are loaded. Bounds are inclusive and bucket-aligned.
+ */
+async function rollupsInRange(
+  ctx: QueryCtx,
+  scope: string,
+  name: string,
+  granularity: Granularity,
+  range: { from?: number; to?: number } | undefined,
+): Promise<Doc<"rollups">[]> {
+  const lo = range?.from === undefined ? -Infinity : bucketStart(range.from, granularity);
+  const hi = range?.to === undefined ? Infinity : bucketStart(range.to, granularity);
+  return await ctx.db
+    .query("rollups")
+    .withIndex("by_scope_name_gran_bucket_dim", (q) =>
+      q
+        .eq("scope", scope)
+        .eq("name", name)
+        .eq("granularity", granularity)
+        .gte("bucket", lo)
+        .lte("bucket", hi),
+    )
+    .collect();
+}
 
 /** Total event count over a range, optionally filtered by one dimension value. */
 export const metric = query({
@@ -33,6 +64,7 @@ export const metric = query({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
+    assertRange(args.range);
     const dim = args.where ? args.where.dim : TOTAL;
     const val = args.where ? valKey(args.where.val) : TOTAL;
 
@@ -40,25 +72,11 @@ export const metric = query({
       return await counter.count(ctx, tupleKey(args.scope, args.name));
     }
 
-    const rollups = await ctx.db
-      .query("rollups")
-      .withIndex("by_scope_name_gran_bucket_dim", (q) =>
-        q
-          .eq("scope", args.scope)
-          .eq("name", args.name)
-          .eq("granularity", "day"),
-      )
-      .collect();
+    const rollups = await rollupsInRange(ctx, args.scope, args.name, "day", args.range);
 
     let total = 0;
     for (const r of rollups) {
       if (r.dim !== dim || r.val !== val) continue;
-      if (args.range?.from !== undefined && r.bucket < bucketStart(args.range.from, "day")) {
-        continue;
-      }
-      if (args.range?.to !== undefined && r.bucket > bucketStart(args.range.to, "day")) {
-        continue;
-      }
       total += r.count;
     }
     return total;
@@ -76,26 +94,14 @@ export const top = query({
   },
   returns: v.array(topRow),
   handler: async (ctx, args) => {
+    assertRange(args.range);
+    assertCount("limit", args.limit);
     const limit = Math.min(args.limit ?? 20, 100);
-    const rollups = await ctx.db
-      .query("rollups")
-      .withIndex("by_scope_name_gran_bucket_dim", (q) =>
-        q
-          .eq("scope", args.scope)
-          .eq("name", args.name)
-          .eq("granularity", "day"),
-      )
-      .collect();
+    const rollups = await rollupsInRange(ctx, args.scope, args.name, "day", args.range);
 
     const counts = new Map<string, number>();
     for (const r of rollups) {
       if (r.dim !== args.dimension) continue;
-      if (args.range?.from !== undefined && r.bucket < bucketStart(args.range.from, "day")) {
-        continue;
-      }
-      if (args.range?.to !== undefined && r.bucket > bucketStart(args.range.to, "day")) {
-        continue;
-      }
       counts.set(r.val, (counts.get(r.val) ?? 0) + r.count);
     }
 
@@ -117,27 +123,16 @@ export const timeseries = query({
   },
   returns: v.array(timeseriesPoint),
   handler: async (ctx, args) => {
+    assertRange(args.range);
     const gran: Granularity = args.granularity;
     const dim = args.where ? args.where.dim : TOTAL;
     const val = args.where ? valKey(args.where.val) : TOTAL;
 
-    const rollups = await ctx.db
-      .query("rollups")
-      .withIndex("by_scope_name_gran_bucket_dim", (q) =>
-        q.eq("scope", args.scope).eq("name", args.name).eq("granularity", gran),
-      )
-      .collect();
-
-    const fromBucket =
-      args.range.from !== undefined ? bucketStart(args.range.from, gran) : undefined;
-    const toBucket =
-      args.range.to !== undefined ? bucketStart(args.range.to, gran) : undefined;
+    const rollups = await rollupsInRange(ctx, args.scope, args.name, gran, args.range);
 
     const counts = new Map<number, number>();
     for (const r of rollups) {
       if (r.dim !== dim || r.val !== val) continue;
-      if (fromBucket !== undefined && r.bucket < fromBucket) continue;
-      if (toBucket !== undefined && r.bucket > toBucket) continue;
       counts.set(r.bucket, (counts.get(r.bucket) ?? 0) + r.count);
     }
 
@@ -156,13 +151,16 @@ export const uniques = query({
   },
   returns: uniquesView,
   handler: async (ctx, args) => {
+    assertRange(args.range);
     const now = Date.now();
     const to = args.range.to ?? now;
     const from = args.range.from ?? to - 30 * 24 * 60 * 60 * 1000;
 
     const subjects = await ctx.db
       .query("subjects")
-      .withIndex("by_scope_firstSeen", (q) => q.eq("scope", args.scope))
+      .withIndex("by_scope_lastSeen", (q) =>
+        q.eq("scope", args.scope).gte("lastSeen", from).lte("lastSeen", to),
+      )
       .collect();
 
     const size = bucketSize(args.granularity);
@@ -174,7 +172,6 @@ export const uniques = query({
     const mauCutoff = to - 30 * dayMs;
 
     for (const s of subjects) {
-      if (s.lastSeen < from || s.lastSeen > to) continue;
       mau += s.lastSeen >= mauCutoff ? 1 : 0;
       wau += s.lastSeen >= wauCutoff ? 1 : 0;
       const bucket = Math.floor(s.lastSeen / size) * size;
@@ -208,6 +205,7 @@ export const funnel = query({
     if (args.steps.length < 2) {
       throw new Error("Funnel requires at least 2 steps");
     }
+    assertRange(args.range);
     const now = Date.now();
     const to = args.range.to ?? now;
     const from = args.range.from ?? to - 30 * 24 * 60 * 60 * 1000;
@@ -272,6 +270,8 @@ export const retention = query({
   },
   returns: v.array(retentionCohort),
   handler: async (ctx, args) => {
+    assertRange(args.cohortRange);
+    assertCount("periods", args.periods);
     const gran: Granularity = args.granularity ?? "day";
     const size = bucketSize(gran);
     const now = Date.now();
@@ -334,6 +334,10 @@ export const distribution = query({
   },
   returns: distributionView,
   handler: async (ctx, args) => {
+    assertRange(args.range);
+    if (!args.buckets.every(Number.isFinite)) {
+      throw invalidInput("INVALID_BUCKETS", "buckets must be finite numbers");
+    }
     const bins = [...args.buckets]
       .sort((a, b) => a - b)
       .map((upper) => ({ upper, count: 0 }));
@@ -390,7 +394,11 @@ export const list = query({
     // Note: events sharing the exact boundary `ts` may be skipped across a page
     // edge — adequate for a raw-event peek; precise feeds belong in the host.
     const { numItems, cursor } = args.paginationOpts;
+    assertCount("numItems", numItems);
     const before = cursor ? Number(cursor) : null;
+    if (before !== null && !Number.isFinite(before)) {
+      throw invalidInput("INVALID_CURSOR", "cursor is not a value returned by list");
+    }
     const rows = await ctx.db
       .query("events")
       .withIndex("by_scope_name_ts", (q) => {

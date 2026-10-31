@@ -94,9 +94,34 @@ session rate-limit check.
 
 - Configure keys by writing a JSON string array to config `(scope, "apiKeys")` (the `apiKeys` config key).
 - Missing or invalid key → `401 { "error": "..." }`.
-- Explicit handler checks (invalid JSON, missing required names/dimensions) return
-  `400 { "error": "..." }`. Not every malformed input is normalized to 400: downstream
-  Convex validator errors and malformed stored API-key JSON can fail the action.
+- Invalid input returns `400 { "error": "...", "code": "..." }`: a body that is not a JSON
+  object, invalid JSON, missing `name` / `dimensions`, `dimensions` that is not a string array,
+  unknown `granularities`, nested or array `props` values, prop keys Convex cannot store, and
+  every typed error in the table below (for example a non-numeric `from`, `to`, or `limit`).
+  Any other failure (for example a Convex argument-validator error) still fails the action.
+- A stored `apiKeys` value that is not a JSON array of strings returns `500 { "error": "API keys
+misconfigured" }`.
+
+## Input errors
+
+Mutations and queries reject clearly invalid input with a `ConvexError` whose data is
+`{ code, message }`. Catch it and branch on `code`:
+
+| Code                  | Raised when                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| `EMPTY_STRING`        | `scope`, `name`, `subjectRef`, `sessionRef`, `dedupeKey`, a dimension, or a config `key` is `""`. |
+| `INVALID_TIMESTAMP`   | `ts`, or a range `from` / `to`, is `NaN` or infinite.                                             |
+| `INVALID_SAMPLE_RATE` | `sampleRate` is not a number from 0 to 1.                                                         |
+| `INVALID_PROP_VALUE`  | A prop is `NaN`, infinite, an object, or an array.                                                |
+| `INVALID_PROP_KEY`    | A prop key is not printable ASCII, is over 1024 characters, or starts with `$` (HTTP).            |
+| `INVALID_COUNT`       | `limit`, `periods`, or `numItems` is not a positive integer.                                      |
+| `INVALID_CURSOR`      | A `list` cursor is not one returned by `list`.                                                    |
+| `INVALID_BUCKETS`     | A `distribution` bucket bound is `NaN` or infinite.                                               |
+| `INVALID_CONFIG`      | `retentionDays` or `sessionIdleMs` is not a positive finite number.                               |
+
+Everything the component stores comes from the host: `props`, `subjectRef`, and so on are
+stored as given, and the component never logs event data. Keep personal data (emails, IP
+addresses, tokens in URLs) out of `props` and refs; hash or omit it before calling `track`.
 
 > `funnel`, `retention`, and raw `list` are exposed through the client SDK and component
 > functions, not the REST surface. The earlier web-locked routes (events/count/summary,
