@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `uniques` reads only subjects active in range through a new `by_scope_lastSeen` index.
 - Add `.js` extensions to every relative import in `src/` so `@vllnt/convex-analytics/test`
   type-checks under `moduleResolution: nodenext`.
+- `convex` is declared only as a (now required) peer dependency, no longer also as a runtime
+  dependency, so a host on `convex` 1.45 to 1.47 no longer gets a second, nested `convex` copy.
 
 ### Changed
 

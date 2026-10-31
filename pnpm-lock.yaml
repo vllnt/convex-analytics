@@ -43,9 +43,6 @@ importers:
       '@convex-dev/sharded-counter':
         specifier: ^0.2.3
         version: 0.2.3(convex@1.48.0(react@19.3.1))
-      convex:
-        specifier: ^1.48.0
-        version: 1.48.0(react@19.3.1)
     devDependencies:
       '@edge-runtime/vm':
         specifier: ^5.0.0
@@ -65,6 +62,9 @@ importers:
       '@vllnt/typescript':
         specifier: 2.0.0
         version: 2.0.0(@typescript/typescript6@6.0.2)
+      convex:
+        specifier: ^1.48.0
+        version: 1.48.0(react@19.3.1)
       convex-test:
         specifier: ^0.0.65
         version: 0.0.65(convex@1.48.0(react@19.3.1))
