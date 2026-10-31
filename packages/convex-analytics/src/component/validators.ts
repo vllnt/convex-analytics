@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 /** A single property value — string, number, boolean, or null. No nested objects/arrays. */
 export const scalarValidator = v.union(
@@ -92,3 +92,82 @@ export const distributionView = v.object({
   count: v.number(),
   sum: v.number(),
 });
+
+/** Stable machine-readable codes carried in `ConvexError.data.code`. */
+export type AnalyticsErrorCode =
+  | "EMPTY_STRING"
+  | "INVALID_TIMESTAMP"
+  | "INVALID_SAMPLE_RATE"
+  | "INVALID_PROP_KEY"
+  | "INVALID_PROP_VALUE"
+  | "INVALID_COUNT"
+  | "INVALID_CURSOR"
+  | "INVALID_BUCKETS"
+  | "INVALID_CONFIG";
+
+/** Typed input error: `ConvexError` whose data is `{ code, message }`. */
+export function invalidInput(
+  code: AnalyticsErrorCode,
+  message: string,
+): ConvexError<{ code: AnalyticsErrorCode; message: string }> {
+  return new ConvexError({ code, message });
+}
+
+/** Reject an empty string. `undefined` (an omitted optional field) passes. */
+export function assertNonEmpty(field: string, value: string | undefined): void {
+  if (value === "") {
+    throw invalidInput("EMPTY_STRING", `${field} must not be empty`);
+  }
+}
+
+/** Reject NaN and +/-Infinity epoch-millis values. `undefined` passes. */
+export function assertFiniteTs(field: string, value: number | undefined): void {
+  if (value !== undefined && !Number.isFinite(value)) {
+    throw invalidInput("INVALID_TIMESTAMP", `${field} must be a finite number`);
+  }
+}
+
+/** Reject non-finite `from` / `to` bounds of an optional range. */
+export function assertRange(range: { from?: number; to?: number } | undefined): void {
+  assertFiniteTs("range.from", range?.from);
+  assertFiniteTs("range.to", range?.to);
+}
+
+/** Reject anything but a positive integer. `undefined` passes. */
+export function assertCount(field: string, value: number | undefined): void {
+  if (value !== undefined && !(Number.isInteger(value) && value > 0)) {
+    throw invalidInput("INVALID_COUNT", `${field} must be a positive integer`);
+  }
+}
+
+/** Reject a sample rate that is not a finite number in `[0, 1]`. `undefined` passes. */
+export function assertSampleRate(value: number | undefined): void {
+  if (value !== undefined && !(value >= 0 && value <= 1)) {
+    throw invalidInput("INVALID_SAMPLE_RATE", "sampleRate must be a number between 0 and 1");
+  }
+}
+
+/** Convex field names: 1-1024 printable ASCII characters, not starting with `$` (or empty). */
+const PROP_KEY = /^(?!\$)[\x20-\x7e]{0,1024}$/;
+
+/**
+ * Reject NaN / +/-Infinity numbers and prop keys Convex cannot store (non-ASCII, control
+ * characters, leading `$`, over 1024 characters). Convex rejects bad keys before a mutation
+ * runs, so the key check matters for callers that validate first, such as the HTTP route.
+ */
+export function assertProps(props: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(props)) {
+    if (!PROP_KEY.test(key)) {
+      throw invalidInput(
+        "INVALID_PROP_KEY",
+        "props keys must be printable ASCII, at most 1024 characters, and not start with $",
+      );
+    }
+    if (value !== null && typeof value === "object") {
+      throw invalidInput("INVALID_PROP_VALUE", `props.${key} must be a scalar, not an object or array`);
+    }
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      throw invalidInput("INVALID_PROP_VALUE", `props.${key} must be a finite number`);
+    }
+  }
+}

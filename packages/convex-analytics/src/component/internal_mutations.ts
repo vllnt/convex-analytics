@@ -1,6 +1,6 @@
-import { internal } from "./_generated/api";
-import { internalMutation } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api.js";
+import { internalMutation } from "./_generated/server.js";
+import type { MutationCtx } from "./_generated/server.js";
 import { v } from "convex/values";
 import { granularitiesValidator } from "./validators.js";
 import { bucketStart, valKey } from "../shared.js";
@@ -185,7 +185,7 @@ export const backfill = internalMutation({
         const bucket = bucketStart(e.ts, gran);
         bump(gran, bucket, TOTAL, TOTAL);
         for (const dim of args.dimensions) {
-          if (dim in e.props) {
+          if (Object.hasOwn(e.props, dim)) {
             bump(gran, bucket, dim, valKey(e.props[dim]!));
           }
         }

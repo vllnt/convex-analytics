@@ -3,8 +3,8 @@
 Every table, mutation, and query is partitioned by a single opaque `scope` string. Use it to
 isolate products, environments, tenants, or platforms — whatever partition your host needs.
 
-| Concept | Field | Default |
-|---------|-------|---------|
+| Concept   | Field   | Default     |
+| --------- | ------- | ----------- |
 | Partition | `scope` | `"default"` |
 
 ## How scoping works
@@ -21,7 +21,10 @@ const analytics = new AnalyticsClient(components.analytics, {
 ### Override per call
 
 ```ts
-await analytics.track(ctx, "signup", { subjectRef: userId, scope: "customer-a" });
+await analytics.track(ctx, "signup", {
+  subjectRef: userId,
+  scope: "customer-a",
+});
 const total = await analytics.metric(ctx, "signup", { scope: "customer-a" });
 ```
 
@@ -39,8 +42,13 @@ Every read takes the same `scope` option; omit it to fall back to the client's d
 **Per-tenant SaaS** — one `scope` per customer:
 
 ```ts
-await analytics.track(ctx, "feature_used", { subjectRef: userId, scope: "customer-a" });
-const used = await analytics.metric(ctx, "feature_used", { scope: "customer-a" });
+await analytics.track(ctx, "feature_used", {
+  subjectRef: userId,
+  scope: "customer-a",
+});
+const used = await analytics.metric(ctx, "feature_used", {
+  scope: "customer-a",
+});
 ```
 
 **Environment split** — separate staging from production:

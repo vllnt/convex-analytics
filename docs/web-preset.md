@@ -12,13 +12,25 @@ Import: `@vllnt/convex-analytics/web`. Source: `packages/convex-analytics/src/we
 import { AnalyticsClient } from "@vllnt/convex-analytics";
 import { webDimensions } from "@vllnt/convex-analytics/web";
 
-const analytics = new AnalyticsClient(components.analytics, { dimensions: webDimensions });
+const analytics = new AnalyticsClient(components.analytics, {
+  dimensions: webDimensions,
+});
 ```
 
 `webDimensions` is the standard web rollup set:
 
 ```ts
-["path", "referrer", "device", "browser", "os", "country", "utmSource", "utmMedium", "utmCampaign"]
+[
+  "path",
+  "referrer",
+  "device",
+  "browser",
+  "os",
+  "country",
+  "utmSource",
+  "utmMedium",
+  "utmCampaign",
+];
 ```
 
 Pass it to the client's `dimensions` config to roll up on those prop keys. Off by default —
@@ -85,6 +97,6 @@ await analytics.timeseries(ctx, "page_view", { granularity: "day", range });
 
 The optional `@vllnt/convex-analytics/react` entry ships reactive hooks over the host's
 re-exported aggregate query refs: `useMetric`, `useTop`, `useTimeseries`, `useUniques`. They
-wrap `convex/react`'s `useQuery`; `react` and `convex` are optional peer deps, so a
-backend-only consumer pulls no React code. Aggregates only (no raw events), every call
+wrap `convex/react`'s `useQuery`; `react` is an optional peer dep, so a backend-only
+consumer pulls no React code. Aggregates only (no raw events), every call
 scope-gated. See the React section of the README.

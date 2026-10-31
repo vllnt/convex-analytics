@@ -55,7 +55,8 @@ export default defineSchema({
     eventCount: v.number(),
   })
     .index("by_scope_subject", ["scope", "subjectRef"])
-    .index("by_scope_firstSeen", ["scope", "firstSeen"]),
+    .index("by_scope_firstSeen", ["scope", "firstSeen"])
+    .index("by_scope_lastSeen", ["scope", "lastSeen"]),
 
   sessions: defineTable({
     scope: v.string(),

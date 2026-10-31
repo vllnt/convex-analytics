@@ -24,6 +24,6 @@ optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@^1.45.0
 ## Optional
 
 - [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
+- [Changelog](packages/convex-analytics/CHANGELOG.md)
 - [Security](SECURITY.md): SECURITY.md
 - [License](LICENSE): MIT license

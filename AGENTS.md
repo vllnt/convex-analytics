@@ -103,7 +103,7 @@ The component never reads host or sibling tables. Host data enters only as opaqu
 ## Commands
 
 ```bash
-pnpm install        # install all workspace deps (pnpm 9+)
+pnpm install        # install all workspace deps (pnpm 10)
 pnpm build          # build all packages (turbo)
 pnpm test           # run all tests (vitest via turbo)
 pnpm typecheck      # type-check all packages
@@ -124,7 +124,7 @@ pnpm lint           # lint all packages
 | `docs/quick-start.md` | Install → mount → track → read walkthrough |
 | `llms.txt` | curated index — `convex@^1.45.0` must match `package.json` `peerDependencies.convex` |
 | `AGENTS.md` | canonical agent instructions (this file) |
-| `CHANGELOG.md` | Keep-a-Changelog entry per release |
+| `packages/convex-analytics/CHANGELOG.md` | Keep-a-Changelog entry per release |
 
 After any source, README, or docs change, update the root `llms.txt` index if links or package
 context changed. Keep one root `llms.txt`; do not generate a second index or a full-source bundle.

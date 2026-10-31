@@ -52,8 +52,8 @@ fields. See [docs/web-preset.md](docs/web-preset.md).
 npm install @vllnt/convex-analytics
 ```
 
-Current `main`/canary requires `convex@^1.45.0`; React is optional. npm `latest` is
-`0.1.0`, while `@canary` follows `main`. This reference describes the current implementation.
+Requires `convex@^1.45.0` as a peer dependency; React is optional. The command installs
+the latest stable release; `@canary` follows `main`.
 
 ## Usage
 
@@ -190,13 +190,15 @@ const byPlan = useTop(api.analytics.top, { name: "signup", dimension: "plan" });
 ```
 
 Thin reactive wrappers over the host's re-exported query refs (`metric`, `top`, `timeseries`,
-`uniques`). `react` + `convex` are optional peer deps; backend-only consumers pull no React.
+`uniques`). `react` is an optional peer dep; backend-only consumers pull no React.
 
 ## Security
 
 - Auth-agnostic mount — the host gates access and passes opaque `subjectRef` / `sessionRef` in.
 - Tables are sandboxed; the host reaches them only through the exported functions.
 - REST endpoints require an `x-api-key` header, compared timing-safe.
+- Invalid input (empty strings, `NaN` / infinite timestamps, non-scalar props) is rejected with a typed `ConvexError`; see [docs/api-reference.md](docs/api-reference.md#input-errors).
+- The component never logs event data. Props and refs are stored as given, so keep personal data out of them (the web preset stores `path`, `referrer`, and geo as received).
 
 See [docs/architecture.md](docs/architecture.md).
 

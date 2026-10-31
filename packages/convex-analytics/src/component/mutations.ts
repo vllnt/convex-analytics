@@ -1,11 +1,19 @@
-import { mutation } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
-import { components } from "./_generated/api";
+import { mutation } from "./_generated/server.js";
+import type { MutationCtx } from "./_generated/server.js";
+import { components } from "./_generated/api.js";
 import { v } from "convex/values";
 import { DirectAggregate } from "@convex-dev/aggregate";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
-import { propsValidator, granularitiesValidator } from "./validators.js";
+import {
+  propsValidator,
+  granularitiesValidator,
+  assertProps,
+  assertFiniteTs,
+  assertNonEmpty,
+  assertSampleRate,
+  invalidInput,
+} from "./validators.js";
 import { bucketStart, tupleKey, valKey } from "../shared.js";
 import type { Granularity, Scalar } from "../shared.js";
 
@@ -87,10 +95,20 @@ export const track = mutation({
   },
   returns: v.union(v.literal("tracked"), v.literal("dropped"), v.literal("duplicate")),
   handler: async (ctx, args) => {
+    assertNonEmpty("scope", args.scope);
+    assertNonEmpty("name", args.name);
+    assertNonEmpty("subjectRef", args.subjectRef);
+    assertNonEmpty("sessionRef", args.sessionRef);
+    assertNonEmpty("dedupeKey", args.dedupeKey);
+    for (const dim of args.dimensions) assertNonEmpty("dimensions[]", dim);
+    assertFiniteTs("ts", args.ts);
+    assertSampleRate(args.sampleRate);
+    const props: Record<string, Scalar> = args.props ?? {};
+    assertProps(props);
+
     const now = Date.now();
     const scope = args.scope;
     const ts = args.ts ?? now;
-    const props: Record<string, Scalar> = args.props ?? {};
     const grans = args.granularities.length > 0 ? args.granularities : (["day"] as const);
 
     if (args.sessionRef !== undefined) {
@@ -191,7 +209,7 @@ export const track = mutation({
       const bucket = bucketStart(ts, granularity);
       await bumpRollup(ctx, scope, args.name, granularity, bucket, TOTAL, TOTAL);
       for (const dim of args.dimensions) {
-        if (dim in props) {
+        if (Object.hasOwn(props, dim)) {
           await bumpRollup(
             ctx,
             scope,
@@ -238,6 +256,8 @@ export const configSet = mutation({
   args: { scope: v.string(), key: v.string(), value: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    assertNonEmpty("scope", args.scope);
+    assertNonEmpty("key", args.key);
     await ensureScope(ctx, args.scope);
     await upsertConfig(ctx, args.scope, args.key, args.value);
     return null;
@@ -253,6 +273,16 @@ export const configure = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    assertNonEmpty("scope", args.scope);
+    assertSampleRate(args.sampleRate);
+    for (const [field, value] of [
+      ["retentionDays", args.retentionDays],
+      ["sessionIdleMs", args.sessionIdleMs],
+    ] as const) {
+      if (value !== undefined && !(Number.isFinite(value) && value > 0)) {
+        throw invalidInput("INVALID_CONFIG", `${field} must be a positive finite number`);
+      }
+    }
     await ensureScope(ctx, args.scope);
     const entries: Array<[string, string]> = [];
     if (args.retentionDays !== undefined) {
