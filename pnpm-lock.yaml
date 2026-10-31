@@ -5,20 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@asamuzakjp/css-color': 7.1.7
-  '@convex-dev/rate-limiter': 0.4.2
-  '@csstools/css-color-parser': 4.2.6
-  '@csstools/css-syntax-patches-for-csstree': 1.1.15
-  brace-expansion@<1.1.21: 1.1.21
-  brace-expansion@>=4.0.0 <5.0.12: 5.0.12
-  convex: 1.48.0
   convex-helpers: 0.1.129
-  deepmerge-ts@<8.0.0: 8.0.0
-  handlebars: 4.7.10
-  magic-string: 1.4.3
-  postcss: 8.5.31
-  rolldown: 1.2.15
-  zod@<4.6.6: 4.6.6
+  deepmerge-ts@<8.0.0: 8.0.2
+  handlebars@<4.7.10: 4.7.10
 
 importers:
 
@@ -30,9 +19,6 @@ importers:
       '@vllnt/eslint-config':
         specifier: 2.0.0
         version: 2.0.0(@typescript-eslint/parser@8.72.0(@typescript/typescript6@6.0.2)(eslint@9.39.5))(@typescript/typescript6@6.0.2)(convex@1.48.0(react@19.3.1))(eslint@9.39.5)(prettier@3.9.6)(turbo@2.11.10)
-      convex:
-        specifier: 1.48.0
-        version: 1.48.0(react@19.3.1)
       eslint:
         specifier: ^9.39.5
         version: 9.39.5
@@ -52,13 +38,13 @@ importers:
         specifier: ^0.3.4
         version: 0.3.4(@standard-schema/spec@1.1.0)(@typescript/typescript6@6.0.2)(convex@1.48.0(react@19.3.1))(react@19.3.1)(zod@4.6.6)
       '@convex-dev/rate-limiter':
-        specifier: 0.4.2
+        specifier: ^0.4.2
         version: 0.4.2(@standard-schema/spec@1.1.0)(@typescript/typescript6@6.0.2)(convex@1.48.0(react@19.3.1))(react@19.3.1)(zod@4.6.6)
       '@convex-dev/sharded-counter':
         specifier: ^0.2.3
         version: 0.2.3(convex@1.48.0(react@19.3.1))
       convex:
-        specifier: 1.48.0
+        specifier: ^1.48.0
         version: 1.48.0(react@19.3.1)
     devDependencies:
       '@edge-runtime/vm':
@@ -76,9 +62,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^5.0.5
         version: 5.0.5(vitest@5.0.5)
-      '@vllnt/eslint-config':
-        specifier: 2.0.0
-        version: 2.0.0(@typescript-eslint/parser@8.72.0(@typescript/typescript6@6.0.2)(eslint@9.39.5))(@typescript/typescript6@6.0.2)(convex@1.48.0(react@19.3.1))(eslint@9.39.5)(prettier@3.9.6)(turbo@2.11.10)
       '@vllnt/typescript':
         specifier: 2.0.0
         version: 2.0.0(@typescript/typescript6@6.0.2)
@@ -203,28 +186,28 @@ packages:
   '@convex-dev/aggregate@0.3.4':
     resolution: {integrity: sha512-w60E4fLuysza8sBIQsLlYFxnzMB7ed8yqYpu/JfDhkUYvnnvW3CzLEf74zCwb/RfLrR6u5a/0pfvVtIp4XNIoA==}
     peerDependencies:
-      convex: 1.48.0
+      convex: ^1.43.0
 
   '@convex-dev/batch-worker@0.3.3':
     resolution: {integrity: sha512-A9mOhSqITtdF6TR9bVZjTy+eES6/r/8ZvMWnNdKsATg8EOn5JMzDplibjaHCjQ57FjVeizbuKJ8GlnMs1RWF0g==}
     peerDependencies:
-      convex: 1.48.0
+      convex: ^1.43.0
       react: ^18.3.1 || ^19.0.0
 
   '@convex-dev/batch-worker@0.3.5':
     resolution: {integrity: sha512-kTxLGy1TXRN6WLcENcoRWWnvPshv1sIZp2EpPqGqCB4FxDI7m8tEHUr+jCLdhGtSZT1UHkWtb1w8YYuEzTxHWQ==}
     peerDependencies:
-      convex: 1.48.0
+      convex: ^1.43.0
 
   '@convex-dev/eslint-plugin@4.0.0':
     resolution: {integrity: sha512-7bYP8Fkk+19L7LWl3xIqUqq/0yIEZNoUQHOodZKIvupqmgaMisz8NKz6OkmMwBVLUQ0sh/9+iPK1OyASANiWyw==}
     peerDependencies:
-      convex: 1.48.0
+      convex: ^1.43.0
 
   '@convex-dev/rate-limiter@0.4.2':
     resolution: {integrity: sha512-njheoDd//MZgxtw+0PP3LL47PVMkvOKZmXDjYglDKSu5IdrfJtGmz/EHd6px9UcALuk/w7LTo83YwQ3bTGsMIg==}
     peerDependencies:
-      convex: 1.48.0
+      convex: ^1.43.0
       react: ^18.2.0 || ^19.0.0
     peerDependenciesMeta:
       react:
@@ -233,7 +216,7 @@ packages:
   '@convex-dev/sharded-counter@0.2.3':
     resolution: {integrity: sha512-rKiUHt/cThlj9qiLUe8nGXWQOvotqynyv4WcH5chwfQmXn2SJvt9yMFkVudXRuJl+NIAxSwY9JY0POfB2YZDEg==}
     peerDependencies:
-      convex: 1.48.0
+      convex: ^1.25.4
 
   '@csstools/color-helpers@6.1.2':
     resolution: {integrity: sha512-grhRy3OKmniaAEKXMjua5z/EODX0MSqBGjunw8+j/3HQjOnahs2AGhvEOIYVUWcU6ScApbhLhVrQTX8XqrMrow==}
@@ -1217,11 +1200,11 @@ packages:
     hasBin: true
     peerDependencies:
       '@standard-schema/spec': ^1.0.0
-      convex: 1.48.0
+      convex: ^1.46.0
       hono: ^4.0.5
       react: ^17.0.2 || ^18.0.0 || ^19.0.0
       typescript: ^5.5 || ^6.0.0 || ^7.0.0
-      zod: 4.6.6
+      zod: ^3.25.0 || ^4.0.0
     peerDependenciesMeta:
       '@standard-schema/spec':
         optional: true
@@ -1237,7 +1220,7 @@ packages:
   convex-test@0.0.65:
     resolution: {integrity: sha512-2FgHlLGraM2O3tEVpOfvoHSleK0x92J8xjQ/qClWzNJX3NcmgvuNeWBrmma7sLJ8lB3ENPxx6ykJTfvZmWg3BQ==}
     peerDependencies:
-      convex: 1.48.0
+      convex: ^1.43.0
 
   convex@1.48.0:
     resolution: {integrity: sha512-M9jEgTvCN8ziP/VgQQUH+j0ijM7g+NmQd8tFlvETK8/HMC/aaqHZwcu4hBO30X5DV2VIyYK4mOoLQGIb1766ew==}
@@ -1315,9 +1298,9 @@ packages:
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
 
-  deepmerge-ts@8.0.0:
-    resolution: {integrity: sha512-ICNjaP0ML+eSdEpJYQC46XiAn/UjAdwbEl0dE8p85ZTeNDinN4Kd4+9jS4OSAuH7st6eC7rQhsqTF5zIDaUm2g==}
-    engines: {node: '>=16.0.0'}
+  deepmerge-ts@8.0.2:
+    resolution: {integrity: sha512-uqbvqLUMrc6p0MO+WBRtTxY55hmyh94WRwI5a++PZe54X+bfVh59FSN7uWCBCW1CCVjzjnrwzfI8zidE2obMMw==}
+    engines: {node: '>=16.9.0'}
 
   define-data-property@1.1.4:
     resolution: {integrity: sha512-rBMvIzlpA8v6E+SJZoo++HAYqsLrkg7MSfIinMPFhmkorw7X+dOXVJQs+QT69zGkzMyfDnIMN2Wid1+NbL3T+A==}
@@ -2713,7 +2696,7 @@ packages:
     resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      zod: 4.6.6
+      zod: ^3.25.0 || ^4.0.0
 
   zod@4.6.6:
     resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
@@ -3849,7 +3832,7 @@ snapshots:
 
   deep-is@0.1.4: {}
 
-  deepmerge-ts@8.0.0: {}
+  deepmerge-ts@8.0.2: {}
 
   define-data-property@1.1.4:
     dependencies:
@@ -4084,7 +4067,7 @@ snapshots:
   eslint-plugin-functional@9.0.5(@typescript/typescript6@6.0.2)(eslint@9.39.5):
     dependencies:
       '@typescript-eslint/utils': 8.69.0(@typescript/typescript6@6.0.2)(eslint@9.39.5)
-      deepmerge-ts: 8.0.0
+      deepmerge-ts: 8.0.2
       escape-string-regexp: 5.0.0
       eslint: 9.39.5
       is-immutable-type: 5.0.4(@typescript/typescript6@6.0.2)(eslint@9.39.5)

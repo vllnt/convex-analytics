@@ -23,7 +23,6 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@7.0.2",
     "@vllnt/eslint-config": "2.0.0",
-    "convex": "^1.48.0",
     "eslint": "^9.39.5",
     "turbo": "^2.11.10",
     "typescript-eslint": "^8.72.0",
@@ -38,20 +37,9 @@
       "esbuild"
     ],
     "overrides": {
-      "@asamuzakjp/css-color": "7.1.7",
-      "@convex-dev/rate-limiter": "0.4.2",
-      "@csstools/css-color-parser": "4.2.6",
-      "@csstools/css-syntax-patches-for-csstree": "1.1.15",
-      "brace-expansion@<1.1.21": "1.1.21",
-      "brace-expansion@>=4.0.0 <5.0.12": "5.0.12",
-      "convex": "1.48.0",
       "convex-helpers": "0.1.129",
-      "deepmerge-ts@<8.0.0": "8.0.0",
-      "handlebars": "4.7.10",
-      "magic-string": "1.4.3",
-      "postcss": "8.5.31",
-      "rolldown": "1.2.15",
-      "zod@<4.6.6": "4.6.6"
+      "deepmerge-ts@<8.0.0": "8.0.2",
+      "handlebars@<4.7.10": "4.7.10"
     }
   }
 }
