@@ -96,11 +96,11 @@ window.
 
 **Goal:** Cut the first **stable** release — the owner blesses the dogfooded canary, lifting the
 `0.1.0` canary-only hold.
-**Exit criteria:** the owner cuts the first stable release via `publish.yml`'s `workflow_dispatch`
-(bump current/patch/minor/major) — version, changelog-from-commits, tag `vX.Y.Z`, `gh release`, npm
-publish `--provenance`; npm `latest` moves to the stable version; CHANGELOG entry written.
+**Exit criteria:** the owner cuts the first stable release by pushing a `vX.Y.Z` tag that matches
+`package.json` and a `CHANGELOG.md` entry; `publish.yml` publishes with `--provenance` and
+creates the GitHub release; npm `latest` moves to the stable version.
 
-- [ ] stable-release.1 Owner cuts the first stable release (lifts the canary-only hold) via the standard `workflow_dispatch` path — version, changelog-from-commits, tag, `gh release`, npm publish `--provenance`
+- [ ] stable-release.1 Owner cuts the first stable release (lifts the canary-only hold) by pushing the `vX.Y.Z` tag handled by `publish.yml` (publish `--provenance`, `gh release`)
 
 ## clickhouse-export [PLANNED]
 
