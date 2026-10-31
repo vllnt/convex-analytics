@@ -43,9 +43,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
-    "typecheck:ci": "tsc --noEmit",
-    "lint": "pnpm --dir ../.. check:agents && eslint src/",
+    "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc/typecheck.tsbuildinfo",
+    "typecheck:ci": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc/typecheck-ci.tsbuildinfo",
+    "lint": "pnpm --dir ../.. check:agents && eslint --cache --cache-location node_modules/.cache/eslint/ src/",
     "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck",
     "codegen": "node scripts/codegen.mjs",
     "build:codegen": "pnpm codegen && pnpm build"
