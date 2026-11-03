@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type-checks under `moduleResolution: nodenext`.
 - `convex` is declared only as a (now required) peer dependency, no longer also as a runtime
   dependency, so a host on `convex` 1.45 to 1.47 no longer gets a second, nested `convex` copy.
+- Export `./convex.config.js` (same target as `./convex.config`), which the Convex Components
+  Directory preflight requires alongside `./_generated/component.js`.
 
 ### Changed
 
