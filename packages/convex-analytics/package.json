@@ -28,6 +28,10 @@
       "types": "./dist/component/convex.config.d.ts",
       "default": "./dist/component/convex.config.js"
     },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     }
