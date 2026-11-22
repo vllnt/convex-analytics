@@ -11,3 +11,4 @@ coverage/
 .vllnt/
 .claude/
 skills-lock.json
+.privacy-denylist.local
