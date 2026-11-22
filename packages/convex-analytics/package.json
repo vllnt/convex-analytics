@@ -40,8 +40,9 @@
     "dist",
     "src",
     "README.md",
-    "LICENSE"
-  ],
+    "LICENSE",
+    "!src/**/*.test.*",
+    "!src/**/*.spec.*"],
   "scripts": {
     "build": "rm -rf dist && tsc && cp ../../README.md ../../LICENSE ./",
     "test": "vitest run",
