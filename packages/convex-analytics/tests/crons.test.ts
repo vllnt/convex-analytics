@@ -80,7 +80,7 @@ describe("prune", () => {
         scope: "s", name: "e", ts: old, dimensions: [], granularities: ["day"],
       });
       const res = await t.mutation(internal.internal_mutations.prune, {});
-      expect(res.deleted).toBe(1);
+      expect(res.deleted).toBe(0);
       await t.finishAllScheduledFunctions(vi.runAllTimers);
       const page = await t.query(api.queries.list, {
         scope: "s", name: "e", paginationOpts: { numItems: 10, cursor: null },
@@ -216,7 +216,7 @@ describe("closeSessions", () => {
         dimensions: [], granularities: ["day"],
       });
       const res = await t.mutation(internal.internal_mutations.closeSessions, {});
-      expect(res.closed).toBe(1);
+      expect(res.closed).toBe(0);
       await t.finishAllScheduledFunctions(vi.runAllTimers);
       const session = await t.run(async (ctx) =>
         ctx.db.query("sessions").withIndex("by_scope_session", (q) =>
@@ -227,97 +227,6 @@ describe("closeSessions", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-describe("batched maintenance sweeps", () => {
-  const scheduled = (t: ReturnType<typeof initConvexTest>) =>
-    t.run(async (ctx) => (await ctx.db.system.query("_scheduled_functions").collect()).length);
-
-  it("prunes quiet scopes inline without scheduling one job per scope", async () => {
-    const t = initConvexTest();
-    const old = Date.now() - 200 * 86400000;
-    await t.run(async (ctx) => {
-      await Promise.all(
-        ["a", "b", "c"].flatMap((scope) => [
-          ctx.db.insert("scopes", { scope }),
-          ctx.db.insert("events", { scope, name: "e", props: {}, ts: old, seq: 0 }),
-        ]),
-      );
-    });
-    expect((await t.mutation(internal.internal_mutations.prune, {})).deleted).toBe(3);
-    expect(await scheduled(t)).toBe(0);
-  });
-
-  it("hands only a busy scope to its own continuation job", async () => {
-    vi.useFakeTimers();
-    try {
-      const t = initConvexTest();
-      const old = Date.now() - 200 * 86400000;
-      await t.run(async (ctx) => {
-        await ctx.db.insert("scopes", { scope: "busy" });
-        await ctx.db.insert("scopes", { scope: "quiet" });
-        await ctx.db.insert("events", { scope: "quiet", name: "e", props: {}, ts: old, seq: 0 });
-        await Promise.all(
-          Array.from({ length: 12 }, (_, seq) =>
-            ctx.db.insert("events", { scope: "busy", name: "e", props: {}, ts: old, seq }),
-          ),
-        );
-      });
-      expect((await t.mutation(internal.internal_mutations.prune, {})).deleted).toBe(6);
-      expect(await scheduled(t)).toBe(1);
-      await t.finishAllScheduledFunctions(vi.runAllTimers);
-      const left = await t.run(async (ctx) => (await ctx.db.query("events").collect()).length);
-      expect(left).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("stops an inline sweep at the read budget and continues until every scope is drained", async () => {
-    vi.useFakeTimers();
-    try {
-      const t = initConvexTest({ transactionLimits: true });
-      const old = Date.now() - 200 * 86400000;
-      const blob = "x".repeat(40_000);
-      const scopes = Array.from({ length: 100 }, (_, i) => `scope-${String(i).padStart(3, "0")}`);
-      for (const scope of scopes) {
-        await t.run(async (ctx) => {
-          await ctx.db.insert("scopes", { scope });
-          await Promise.all(
-            Array.from({ length: 4 }, (_, seq) =>
-              ctx.db.insert("events", { scope, name: "e", props: { blob }, ts: old, seq }),
-            ),
-          );
-        });
-      }
-      const first = await t.mutation(internal.internal_mutations.prune, {});
-      expect(first.deleted).toBeGreaterThan(0);
-      expect(first.deleted).toBeLessThan(400);
-      expect(await scheduled(t)).toBe(1);
-      await t.finishAllScheduledFunctions(vi.runAllTimers);
-      const left = await t.run(async (ctx) => (await ctx.db.query("events").collect()).length);
-      expect(left).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("closes idle sessions across quiet scopes inline without per-scope jobs", async () => {
-    const t = initConvexTest();
-    const idle = Date.now() - 60 * 60 * 1000;
-    await t.run(async (ctx) => {
-      await Promise.all(
-        ["a", "b"].flatMap((scope) => [
-          ctx.db.insert("scopes", { scope }),
-          ctx.db.insert("sessions", {
-            scope, sessionRef: "s1", startTs: idle, lastTs: idle, eventCount: 1,
-          }),
-        ]),
-      );
-    });
-    expect((await t.mutation(internal.internal_mutations.closeSessions, {})).closed).toBe(2);
-    expect(await scheduled(t)).toBe(0);
   });
 });
 

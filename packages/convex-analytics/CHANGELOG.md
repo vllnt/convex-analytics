@@ -41,9 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sessions.by_scope_lastTs` indexes (2 fewer index writes per event, 1 fewer per session write).
 - Replace `rollups.by_scope_name_dim_val` with `by_scope_name_gran_dim_val_bucket`. `metric` and
   `timeseries` now read only the requested series instead of every dimension value in the range.
-- The `prune` and `close-sessions` crons handle up to 100 scopes per run inline instead of
-  scheduling one job per scope; only a scope with more work gets its own continuation job, and a
-  run stops early (continuing from the last finished scope) once it has read about 4 MiB.
 - Release flow: stable versions publish only from a pushed `vX.Y.Z` tag on `main` through
   `.github/workflows/publish.yml` (npm trusted publishing with provenance); actions are pinned
   to commit SHAs. The changelog now lives in `packages/convex-analytics/`.
