@@ -15,8 +15,10 @@ const modules = import.meta.glob("../src/component/**/*.ts");
  * The component schema is the test root, so children resolve at root-relative
  * paths (`aggregate`, `shardedCounter`, `rateLimiter`).
  */
-export function initConvexTest(): ReturnType<typeof convexTest> {
-  const t = convexTest(schema, modules);
+export function initConvexTest(
+  options: { transactionLimits?: boolean } = {},
+): ReturnType<typeof convexTest> {
+  const t = convexTest({ schema, modules, transactionLimits: options.transactionLimits ?? false });
   t.registerComponent("aggregate", aggregateTest.schema, aggregateTest.modules);
   t.registerComponent(
     "shardedCounter",

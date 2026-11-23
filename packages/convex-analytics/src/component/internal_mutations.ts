@@ -38,7 +38,15 @@ const SCOPE_BATCH = 100;
 
 const SCOPE_SLICE = MAINTENANCE_CAP / SCOPE_BATCH;
 
-async function pruneScope(ctx: MutationCtx, scope: string, limit: number): Promise<number> {
+const INLINE_BYTES_BUDGET = 4 * 1024 * 1024;
+
+type ScopeWork = { count: number; bytes: number };
+
+function sizeOf(rows: object[]): number {
+  return rows.reduce((total, row) => total + new TextEncoder().encode(JSON.stringify(row)).length, 0);
+}
+
+async function pruneScope(ctx: MutationCtx, scope: string, limit: number): Promise<ScopeWork> {
   const retentionDays = await readNumber(ctx, scope, "retentionDays", DEFAULT_RETENTION_DAYS);
   const cutoff = Date.now() - retentionDays * DAY_MS;
   const stale = await ctx.db
@@ -46,10 +54,10 @@ async function pruneScope(ctx: MutationCtx, scope: string, limit: number): Promi
     .withIndex("by_scope_ts", (q) => q.eq("scope", scope).lt("ts", cutoff))
     .take(limit);
   await Promise.all(stale.map((event) => ctx.db.delete("events", event._id)));
-  return stale.length;
+  return { count: stale.length, bytes: sizeOf(stale) };
 }
 
-async function closeScope(ctx: MutationCtx, scope: string, limit: number): Promise<number> {
+async function closeScope(ctx: MutationCtx, scope: string, limit: number): Promise<ScopeWork> {
   const idleMs = await readNumber(ctx, scope, "sessionIdleMs", DEFAULT_SESSION_IDLE_MS);
   const cutoff = Date.now() - idleMs;
   const stale = await ctx.db
@@ -61,7 +69,7 @@ async function closeScope(ctx: MutationCtx, scope: string, limit: number): Promi
   await Promise.all(
     stale.map((session) => ctx.db.patch("sessions", session._id, { endTs: session.lastTs })),
   );
-  return stale.length;
+  return { count: stale.length, bytes: sizeOf(stale) };
 }
 
 type Sweep = "prune" | "closeSessions";
@@ -74,11 +82,11 @@ async function sweep(
   const work = kind === "prune" ? pruneScope : closeScope;
   const next = internal.internal_mutations[kind];
   if (args.scope !== undefined) {
-    const done = await work(ctx, args.scope, MAINTENANCE_CAP);
-    if (done === MAINTENANCE_CAP) {
+    const { count } = await work(ctx, args.scope, MAINTENANCE_CAP);
+    if (count === MAINTENANCE_CAP) {
       await ctx.scheduler.runAfter(0, next, { scope: args.scope });
     }
-    return done;
+    return count;
   }
   const scopes = await ctx.db
     .query("scopes")
@@ -86,16 +94,22 @@ async function sweep(
       args.afterScope === undefined ? q : q.gt("scope", args.afterScope),
     )
     .take(SCOPE_BATCH);
-  const counts = await Promise.all(scopes.map((row) => work(ctx, row.scope, SCOPE_SLICE)));
-  await Promise.all(
-    scopes
-      .filter((_, i) => counts[i] === SCOPE_SLICE)
-      .map((row) => ctx.scheduler.runAfter(0, next, { scope: row.scope })),
-  );
-  if (scopes.length === SCOPE_BATCH) {
-    await ctx.scheduler.runAfter(0, next, { afterScope: scopes[scopes.length - 1]!.scope });
+  let total = 0;
+  let bytes = 0;
+  for (const [i, row] of scopes.entries()) {
+    const result = await work(ctx, row.scope, SCOPE_SLICE);
+    total += result.count;
+    bytes += result.bytes;
+    if (result.count === SCOPE_SLICE) {
+      await ctx.scheduler.runAfter(0, next, { scope: row.scope });
+    }
+    const more = i < scopes.length - 1 || scopes.length === SCOPE_BATCH;
+    if (more && (bytes >= INLINE_BYTES_BUDGET || i === scopes.length - 1)) {
+      await ctx.scheduler.runAfter(0, next, { afterScope: row.scope });
+      return total;
+    }
   }
-  return counts.reduce((total, n) => total + n, 0);
+  return total;
 }
 
 /** Delete raw events past `retentionDays` for a scope. Rollups are kept forever. Idempotent. */

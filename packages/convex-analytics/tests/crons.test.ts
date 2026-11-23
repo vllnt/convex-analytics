@@ -274,6 +274,35 @@ describe("batched maintenance sweeps", () => {
     }
   });
 
+  it("stops an inline sweep at the read budget and continues until every scope is drained", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = initConvexTest({ transactionLimits: true });
+      const old = Date.now() - 200 * 86400000;
+      const blob = "x".repeat(40_000);
+      const scopes = Array.from({ length: 100 }, (_, i) => `scope-${String(i).padStart(3, "0")}`);
+      for (const scope of scopes) {
+        await t.run(async (ctx) => {
+          await ctx.db.insert("scopes", { scope });
+          await Promise.all(
+            Array.from({ length: 4 }, (_, seq) =>
+              ctx.db.insert("events", { scope, name: "e", props: { blob }, ts: old, seq }),
+            ),
+          );
+        });
+      }
+      const first = await t.mutation(internal.internal_mutations.prune, {});
+      expect(first.deleted).toBeGreaterThan(0);
+      expect(first.deleted).toBeLessThan(400);
+      expect(await scheduled(t)).toBe(1);
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      const left = await t.run(async (ctx) => (await ctx.db.query("events").collect()).length);
+      expect(left).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("closes idle sessions across quiet scopes inline without per-scope jobs", async () => {
     const t = initConvexTest();
     const idle = Date.now() - 60 * 60 * 1000;
