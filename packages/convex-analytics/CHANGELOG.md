@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `track` no longer writes to the `@convex-dev/aggregate` child: no query read it. One fewer
+  component call and B-tree write per tracked event. The child stays mounted.
+- Drop the unused `events.by_scope_subject_ts`, `events.by_scope_session_ts` and
+  `sessions.by_scope_lastTs` indexes (2 fewer index writes per event, 1 fewer per session write).
+- Replace `rollups.by_scope_name_dim_val` with `by_scope_name_gran_dim_val_bucket`. `metric` and
+  `timeseries` now read only the requested series instead of every dimension value in the range.
 - Release flow: stable versions publish only from a pushed `vX.Y.Z` tag on `main` through
   `.github/workflows/publish.yml` (npm trusted publishing with provenance); actions are pinned
   to commit SHAs. The changelog now lives in `packages/convex-analytics/`.

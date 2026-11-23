@@ -62,7 +62,7 @@ track(
 ```
 
 Ingest one event. Rollup-on-write: increments the total + each host-declared dimension
-present in `props`, writes the raw event, and bumps the sharded counter and aggregate.
+present in `props`, writes the raw event, and bumps the sharded counter.
 
 - **Rate limit** — when `sessionRef` is set, a token bucket per `(scope, sessionRef)` refills at 100 events/minute with capacity 10; over-limit returns `"dropped"`. These limits are fixed in the component, not configurable through this client. Omitting `sessionRef` bypasses this limiter.
 - **Sampling** — when `sampleRate < 1`, a fraction of events return `"dropped"`.

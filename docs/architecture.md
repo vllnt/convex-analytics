@@ -24,7 +24,7 @@ track(ctx, name, opts)
   +- 7. Rollup-on-write: for each granularity bucket, increment the total row
   |     and one row per host-declared dimension present in props
   |
-  +- 8. Aggregate insert (namespace "scope:name") + sharded counter increment
+  +- 8. Sharded counter increment (namespace "scope:name")
   |
   +- return "tracked"
 ```
@@ -37,7 +37,7 @@ unbounded total) — `metric`, `top`, and `timeseries` never scan raw events. `f
 
 | Component      | Package                       | Role                                               |
 | -------------- | ----------------------------- | -------------------------------------------------- |
-| aggregate      | `@convex-dev/aggregate`       | Range counts, namespaced `scope:name`.             |
+| aggregate      | `@convex-dev/aggregate`       | Mounted for compatibility; not written or read.    |
 | shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `scope:name` (16 shards).           |
 | rateLimiter    | `@convex-dev/rate-limiter`    | Per-`sessionRef` token bucket (100/min, burst 10). |
 

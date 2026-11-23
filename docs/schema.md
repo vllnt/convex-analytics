@@ -25,8 +25,7 @@ kept forever).
 | Index                 | Fields                  | Purpose                                  |
 | --------------------- | ----------------------- | ---------------------------------------- |
 | `by_scope_name_ts`    | [scope, name, ts]       | Primary query path; funnel, list, prune. |
-| `by_scope_subject_ts` | [scope, subjectRef, ts] | Per-subject reads.                       |
-| `by_scope_session_ts` | [scope, sessionRef, ts] | Per-session reads.                       |
+| `by_scope_ts`         | [scope, ts]             | Retention prune.                         |
 | `by_dedupe`           | [scope, dedupeKey]      | Dedupe lookup at ingest.                 |
 
 ## rollups
@@ -49,8 +48,8 @@ the **total** for that bucket; one row per host-declared dimension value present
 
 | Index                           | Fields                                       | Purpose                                           |
 | ------------------------------- | -------------------------------------------- | ------------------------------------------------- |
-| `by_scope_name_gran_bucket_dim` | [scope, name, granularity, bucket, dim, val] | metric / top / timeseries reads, on-write upsert. |
-| `by_scope_name_dim_val`         | [scope, name, dim, val]                      | Backfill / dimension scans.                       |
+| `by_scope_name_gran_bucket_dim` | [scope, name, granularity, bucket, dim, val] | top reads, on-write upsert.                       |
+| `by_scope_name_gran_dim_val_bucket` | [scope, name, granularity, dim, val, bucket] | metric / timeseries reads of one series, backfill. |
 
 ## subjects
 
@@ -93,7 +92,7 @@ by the `closeSessions` cron after `sessionIdleMs`.
 | Index              | Fields              | Purpose                                    |
 | ------------------ | ------------------- | ------------------------------------------ |
 | `by_scope_session` | [scope, sessionRef] | Direct lookup / upsert.                    |
-| `by_scope_lastTs`  | [scope, lastTs]     | Idle-session scan for close-sessions cron. |
+| `by_scope_endTs_lastTs` | [scope, endTs, lastTs] | Idle open-session scan for close-sessions cron. |
 
 ## config
 
@@ -116,6 +115,6 @@ Cron-relevant config, keyed by `(scope, key)`. Values are stored as strings. Set
 
 | Component      | Package                       | Role                                     |
 | -------------- | ----------------------------- | ---------------------------------------- |
-| aggregate      | `@convex-dev/aggregate`       | Range counts, namespaced `scope:name`.   |
+| aggregate      | `@convex-dev/aggregate`       | Mounted for compatibility; not written or read. |
 | shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `scope:name` (16 shards). |
 | rateLimiter    | `@convex-dev/rate-limiter`    | Per-`sessionRef` token bucket at ingest. |

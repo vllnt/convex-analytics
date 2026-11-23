@@ -163,7 +163,7 @@ export const backfill = internalMutation({
 
     const existing = await ctx.db
       .query("rollups")
-      .withIndex("by_scope_name_dim_val", (q) =>
+      .withIndex("by_scope_name_gran_dim_val_bucket", (q) =>
         q.eq("scope", args.scope).eq("name", args.name),
       )
       .collect();
