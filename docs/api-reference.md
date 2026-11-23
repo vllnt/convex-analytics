@@ -110,7 +110,6 @@ Mutations and queries reject clearly invalid input with a `ConvexError` whose da
 | Code                  | Raised when                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------- |
 | `EMPTY_STRING`        | `scope`, `name`, `subjectRef`, `sessionRef`, `dedupeKey`, a dimension, or a config `key` is `""`. |
-| `STRING_TOO_LONG`     | One of those values is over 512 characters (write paths only).                                    |
 | `INVALID_TIMESTAMP`   | `ts`, or a range `from` / `to`, is `NaN` or infinite.                                             |
 | `INVALID_SAMPLE_RATE` | `sampleRate` is not a number from 0 to 1.                                                         |
 | `INVALID_PROP_VALUE`  | A prop is `NaN`, infinite, an object, or an array.                                                |
