@@ -96,6 +96,7 @@ export const distributionView = v.object({
 /** Stable machine-readable codes carried in `ConvexError.data.code`. */
 export type AnalyticsErrorCode =
   | "EMPTY_STRING"
+  | "STRING_TOO_LONG"
   | "INVALID_TIMESTAMP"
   | "INVALID_SAMPLE_RATE"
   | "INVALID_PROP_KEY"
@@ -113,10 +114,15 @@ export function invalidInput(
   return new ConvexError({ code, message });
 }
 
-/** Reject an empty string. `undefined` (an omitted optional field) passes. */
+/** Reject an empty or over-long string. `undefined` (an omitted optional field) passes. */
+export const MAX_REF_LENGTH = 512;
+
 export function assertNonEmpty(field: string, value: string | undefined): void {
   if (value === "") {
     throw invalidInput("EMPTY_STRING", `${field} must not be empty`);
+  }
+  if (value !== undefined && value.length > MAX_REF_LENGTH) {
+    throw invalidInput("STRING_TOO_LONG", `${field} must be at most ${MAX_REF_LENGTH} characters`);
   }
 }
 
