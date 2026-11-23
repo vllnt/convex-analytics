@@ -24,8 +24,6 @@ export default defineSchema({
   })
     .index("by_scope_name_ts", ["scope", "name", "ts"])
     .index("by_scope_ts", ["scope", "ts"])
-    .index("by_scope_subject_ts", ["scope", "subjectRef", "ts"])
-    .index("by_scope_session_ts", ["scope", "sessionRef", "ts"])
     .index("by_dedupe", ["scope", "dedupeKey"]),
 
   rollups: defineTable({
@@ -45,7 +43,14 @@ export default defineSchema({
       "dim",
       "val",
     ])
-    .index("by_scope_name_dim_val", ["scope", "name", "dim", "val"]),
+    .index("by_scope_name_gran_dim_val_bucket", [
+      "scope",
+      "name",
+      "granularity",
+      "dim",
+      "val",
+      "bucket",
+    ]),
 
   subjects: defineTable({
     scope: v.string(),
@@ -68,7 +73,6 @@ export default defineSchema({
     eventCount: v.number(),
   })
     .index("by_scope_session", ["scope", "sessionRef"])
-    .index("by_scope_lastTs", ["scope", "lastTs"])
     .index("by_scope_endTs_lastTs", ["scope", "endTs", "lastTs"]),
 
   scopes: defineTable({

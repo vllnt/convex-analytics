@@ -54,6 +54,32 @@ async function rollupsInRange(
     .collect();
 }
 
+async function seriesInRange(
+  ctx: QueryCtx,
+  scope: string,
+  name: string,
+  granularity: Granularity,
+  dim: string,
+  val: string,
+  range: { from?: number; to?: number } | undefined,
+): Promise<Doc<"rollups">[]> {
+  const lo = range?.from === undefined ? -Infinity : bucketStart(range.from, granularity);
+  const hi = range?.to === undefined ? Infinity : bucketStart(range.to, granularity);
+  return await ctx.db
+    .query("rollups")
+    .withIndex("by_scope_name_gran_dim_val_bucket", (q) =>
+      q
+        .eq("scope", scope)
+        .eq("name", name)
+        .eq("granularity", granularity)
+        .eq("dim", dim)
+        .eq("val", val)
+        .gte("bucket", lo)
+        .lte("bucket", hi),
+    )
+    .collect();
+}
+
 /** Total event count over a range, optionally filtered by one dimension value. */
 export const metric = query({
   args: {
@@ -72,14 +98,8 @@ export const metric = query({
       return await counter.count(ctx, tupleKey(args.scope, args.name));
     }
 
-    const rollups = await rollupsInRange(ctx, args.scope, args.name, "day", args.range);
-
-    let total = 0;
-    for (const r of rollups) {
-      if (r.dim !== dim || r.val !== val) continue;
-      total += r.count;
-    }
-    return total;
+    const rollups = await seriesInRange(ctx, args.scope, args.name, "day", dim, val, args.range);
+    return rollups.reduce((total, r) => total + r.count, 0);
   },
 });
 
@@ -128,17 +148,8 @@ export const timeseries = query({
     const dim = args.where ? args.where.dim : TOTAL;
     const val = args.where ? valKey(args.where.val) : TOTAL;
 
-    const rollups = await rollupsInRange(ctx, args.scope, args.name, gran, args.range);
-
-    const counts = new Map<number, number>();
-    for (const r of rollups) {
-      if (r.dim !== dim || r.val !== val) continue;
-      counts.set(r.bucket, (counts.get(r.bucket) ?? 0) + r.count);
-    }
-
-    return [...counts.entries()]
-      .map(([bucket, count]) => ({ bucket, count }))
-      .sort((a, b) => a.bucket - b.bucket);
+    const rollups = await seriesInRange(ctx, args.scope, args.name, gran, dim, val, args.range);
+    return rollups.map((r) => ({ bucket: r.bucket, count: r.count }));
   },
 });
 

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `track`, `configSet` and `configure` reject a `scope`, `name`, `subjectRef`, `sessionRef`,
+  `dedupeKey`, dimension or config `key` over 512 characters with `STRING_TOO_LONG`.
 - Reject clearly invalid input with typed `ConvexError` codes (`EMPTY_STRING`,
   `INVALID_TIMESTAMP`, `INVALID_SAMPLE_RATE`, `INVALID_PROP_VALUE`, `INVALID_PROP_KEY`,
   `INVALID_COUNT`, `INVALID_CURSOR`, `INVALID_BUCKETS`, `INVALID_CONFIG`): `NaN` or infinite
@@ -35,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `track` no longer writes to the `@convex-dev/aggregate` child: no query read it. One fewer
+  component call and B-tree write per tracked event. The child stays mounted.
+- Drop the unused `events.by_scope_subject_ts`, `events.by_scope_session_ts` and
+  `sessions.by_scope_lastTs` indexes (2 fewer index writes per event, 1 fewer per session write).
+- Replace `rollups.by_scope_name_dim_val` with `by_scope_name_gran_dim_val_bucket`. `metric` and
+  `timeseries` now read only the requested series instead of every dimension value in the range.
+- The `prune` and `close-sessions` crons handle up to 100 scopes per run inline instead of
+  scheduling one job per scope; only a scope with more work gets its own continuation job.
 - Release flow: stable versions publish only from a pushed `vX.Y.Z` tag on `main` through
   `.github/workflows/publish.yml` (npm trusted publishing with provenance); actions are pinned
   to commit SHAs. The changelog now lives in `packages/convex-analytics/`.

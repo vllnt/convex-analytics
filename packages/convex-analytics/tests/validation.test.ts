@@ -53,6 +53,42 @@ describe("track input validation", () => {
     await expectCode(t.mutation(api.mutations.track, { ...base, ...override }), "EMPTY_STRING");
   });
 
+  it.each([
+    ["scope", { scope: "x".repeat(513) }],
+    ["name", { name: "x".repeat(513) }],
+    ["subjectRef", { subjectRef: "x".repeat(513) }],
+    ["sessionRef", { sessionRef: "x".repeat(513) }],
+    ["dedupeKey", { dedupeKey: "x".repeat(513) }],
+    ["dimensions", { dimensions: ["x".repeat(513)] }],
+  ])("rejects a %s over 512 characters", async (_field, override) => {
+    const t = initConvexTest();
+    await expectCode(t.mutation(api.mutations.track, { ...base, ...override }), "STRING_TOO_LONG");
+    const events = await t.run(async (ctx) => (await ctx.db.query("events").collect()).length);
+    expect(events).toBe(0);
+  });
+
+  it("accepts refs of exactly 512 characters", async () => {
+    const t = initConvexTest();
+    const ref = "x".repeat(512);
+    expect(
+      await t.mutation(api.mutations.track, {
+        ...base, scope: ref, name: ref, subjectRef: ref, sessionRef: ref, dedupeKey: ref,
+      }),
+    ).toBe("tracked");
+  });
+
+  it("rejects an over-long config scope or key", async () => {
+    const t = initConvexTest();
+    await expectCode(
+      t.mutation(api.mutations.configSet, { scope: "s", key: "k".repeat(513), value: "v" }),
+      "STRING_TOO_LONG",
+    );
+    await expectCode(
+      t.mutation(api.mutations.configure, { scope: "s".repeat(513), retentionDays: 1 }),
+      "STRING_TOO_LONG",
+    );
+  });
+
   it.each([NaN, -0.1, 1.1, Infinity])("rejects sampleRate=%s", async (sampleRate) => {
     const t = initConvexTest();
     await expectCode(

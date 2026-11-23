@@ -2,7 +2,6 @@ import { mutation } from "./_generated/server.js";
 import type { MutationCtx } from "./_generated/server.js";
 import { components } from "./_generated/api.js";
 import { v } from "convex/values";
-import { DirectAggregate } from "@convex-dev/aggregate";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
 import {
@@ -17,8 +16,6 @@ import {
 import { bucketStart, tupleKey, valKey } from "../shared.js";
 import type { Granularity, Scalar } from "../shared.js";
 
-type AggregateType = { Key: number; Id: string; Namespace: string };
-const aggregate = new DirectAggregate<AggregateType>(components.aggregate as never);
 const counter = new ShardedCounter(components.shardedCounter as never, {
   defaultShards: 16,
 });
@@ -150,7 +147,7 @@ export const track = mutation({
 
     await ensureScope(ctx, scope);
 
-    const eventId = await ctx.db.insert("events", {
+    await ctx.db.insert("events", {
       scope,
       name: args.name,
       subjectRef: args.subjectRef,
@@ -223,11 +220,6 @@ export const track = mutation({
       }
     }
 
-    await aggregate.insert(ctx, {
-      key: ts,
-      id: eventId as string,
-      namespace: tupleKey(scope, args.name),
-    });
     await counter.add(ctx, tupleKey(scope, args.name));
 
     return "tracked";
