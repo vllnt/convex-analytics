@@ -4,7 +4,8 @@ An opt-in layer for web analytics. Pure host-side helpers — **not** part of th
 component. The generic core stays domain-neutral; you turn on web breakdowns by passing
 `webDimensions` to the client and using `trackPageview` to ingest page views.
 
-Import: `@vllnt/convex-analytics/web`. Source: `packages/convex-analytics/src/web/index.ts`.
+Import: `@vllnt/convex-analytics/web`. Source: `src/web/index.ts` in the package
+(`packages/convex-analytics/src/web/index.ts` in the repository).
 
 ## webDimensions
 
@@ -13,7 +14,7 @@ import { AnalyticsClient } from "@vllnt/convex-analytics";
 import { webDimensions } from "@vllnt/convex-analytics/web";
 
 const analytics = new AnalyticsClient(components.analytics, {
-  dimensions: webDimensions,
+  dimensions: [...webDimensions],
 });
 ```
 
@@ -33,6 +34,7 @@ const analytics = new AnalyticsClient(components.analytics, {
 ];
 ```
 
+`webDimensions` is a readonly tuple and `dimensions` is a `string[]`, so spread it as above.
 Pass it to the client's `dimensions` config to roll up on those prop keys. Off by default —
 the generic core has zero web fields.
 

@@ -25,7 +25,7 @@ packages/
       web/index.ts             # opt-in web preset (webDimensions, parseUserAgent, geoFromHeaders, trackPageview)
       react/index.tsx          # optional ./react hooks (useMetric/useTop/useTimeseries/useUniques)
       component/
-        schema.ts              # events, rollups, subjects, sessions, config (sandboxed)
+        schema.ts              # events, rollups, subjects, sessions, scopes, config (sandboxed)
         convex.config.ts       # defineComponent("analytics") + aggregate/shardedCounter/rateLimiter
         mutations.ts           # track, configure, configSet
         queries.ts             # metric, top, timeseries, uniques, funnel, retention, distribution, list, configGet
@@ -39,7 +39,7 @@ packages/
 | Concern | Owner |
 |---------|-------|
 | Event store + rollups + subject/session lifecycle (track, read verbs, retention) | **Component** |
-| `events`, `rollups`, `subjects`, `sessions`, `config` sandboxed tables | **Component** |
+| `events`, `rollups`, `subjects`, `sessions`, `scopes`, `config` sandboxed tables | **Component** |
 | Rollup-on-write aggregation, crons (prune, closeSessions) | **Component** |
 | Subject / session identity, auth / authz, API-key gating policy | **Host** |
 | Meaning of `name`, `subjectRef`, `sessionRef`, and each `props` key | **Host** |
@@ -116,7 +116,7 @@ pnpm lint           # lint all packages
 |-----|------|
 | `README.md` | Value prop, features, generic-core-vs-web split, install, usage, config, API summary, web/react, security, testing |
 | `docs/client-sdk.md` | Full `AnalyticsClient<TProps>` config + verb reference + types |
-| `docs/schema.md` | The five sandboxed tables + indexes |
+| `docs/schema.md` | The six sandboxed tables + indexes |
 | `docs/api-reference.md` | The five generic REST routes |
 | `docs/web-preset.md` | Opt-in web dimensions + UA/geo helpers + React note |
 | `docs/multi-product.md` | The opaque `scope` partition |
@@ -129,6 +129,14 @@ pnpm lint           # lint all packages
 After any source, README, or docs change, update the root `llms.txt` index if links or package
 context changed. Keep one root `llms.txt`; do not generate a second index or a full-source bundle.
 Grep stale values before committing.
+
+The package build copies `README.md`, `LICENSE`, `llms.txt` and `docs/` into
+`packages/convex-analytics/`, and `files` in its `package.json` ships the user pages (not
+`docs/REBUILD.md`). `llms.txt` links are relative to the published package root, so
+`./CHANGELOG.md` resolves there, not at the repository root. `pnpm --filter
+@vllnt/convex-analytics test:package` (after `pnpm build`, run in CI) installs the packed
+tarball and checks the required files, the excluded internal files, and every relative link.
+Add a new user page to `files` and to `REQUIRED` in `scripts/test-package.mjs`.
 
 ## Generated code
 

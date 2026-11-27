@@ -165,7 +165,7 @@ import { AnalyticsClient } from "@vllnt/convex-analytics";
 import { webDimensions, trackPageview } from "@vllnt/convex-analytics/web";
 
 const analytics = new AnalyticsClient(components.analytics, {
-  dimensions: webDimensions,
+  dimensions: [...webDimensions], // readonly tuple; `dimensions` takes a string[]
 });
 
 await trackPageview(analytics, ctx, {
@@ -220,8 +220,22 @@ analyticsTest.register(t);
 
 [Schema](docs/schema.md) · [Client SDK](docs/client-sdk.md) · [REST API](docs/api-reference.md) ·
 [Web Preset](docs/web-preset.md) · [Multi-Product](docs/multi-product.md) ·
-[Architecture](docs/architecture.md). For AI agents:
-[`llms.txt`](llms.txt), the maintained documentation index.
+[Architecture](docs/architecture.md) ·
+[`llms.txt`](llms.txt) (documentation index).
+
+## For coding agents
+
+The npm package bundles these docs at `node_modules/@vllnt/convex-analytics/docs/`, along
+with `llms.txt`, `CHANGELOG.md` and the TypeScript `src/`. They match the installed version.
+Read them before writing code against this package.
+
+## Related packages
+
+| Package | Use it when |
+| ------- | ----------- |
+| [`@vllnt/analytics`](https://oss.vllnt.com/packages/analytics) | You need browser-side tracking with consent management and React integration. Use this component for counts stored in your Convex backend. |
+| [`@vllnt/convex-events`](https://oss.vllnt.com/packages/convex-events) | You need an append-only activity feed and event ledger per subject. Use this component for aggregate counts, breakdowns and trends. |
+| [`@vllnt/convex-experiments`](https://oss.vllnt.com/packages/convex-experiments) | You need A/B variant assignment and deduped exposure tracking. Use this component for general event metrics. |
 
 ## Contributing
 
@@ -231,10 +245,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Built by [bntvllnt](https://github.com/bntvllnt) · [bntvllnt.com](https://bntvllnt.com) · [X @bntvllnt](https://x.com/bntvllnt)
 
-Part of the [@vllnt](https://github.com/vllnt) Convex component fleet — [vllnt.com](https://vllnt.com)
-
 If this is useful, [sponsor the work](https://github.com/sponsors/bntvllnt).
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+Part of vllnt oss: https://oss.vllnt.com

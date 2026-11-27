@@ -91,7 +91,7 @@ See the [REST API](./api-reference.md) for all five routes.
 import { webDimensions, trackPageview } from "@vllnt/convex-analytics/web";
 
 const web = new AnalyticsClient(components.analytics, {
-  dimensions: webDimensions,
+  dimensions: [...webDimensions],
 });
 await trackPageview(web, ctx, { path: "/pricing", headers: request.headers });
 ```
@@ -111,5 +111,5 @@ analyticsTest.register(t);
 ## Next steps
 
 - [Client SDK](./client-sdk.md) — full config + verb reference
-- [Schema](./schema.md) — the five sandboxed tables
+- [Schema](./schema.md) — the six sandboxed tables
 - [Web Preset](./web-preset.md) — opt-in web dimensions + helpers

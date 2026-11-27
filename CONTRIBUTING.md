@@ -83,8 +83,8 @@ When adding features or fixing bugs, include tests that cover your change.
 Maintainers only. Every publish runs in `.github/workflows/publish.yml` with trusted
 publishing and provenance; nothing is published from a local machine.
 
-- Canary (`@canary`): pushes to `main` publish one when the `CANARY_ENABLED` repository
-  variable is `true`; otherwise run the workflow manually on `main`.
+- Canary (`@canary`): every push to `main` that touches the package or its shipped docs
+  publishes one; you can also run the workflow manually on `main`.
 - Stable (`@latest`): merge a PR that sets `packages/convex-analytics/package.json` `version` and
   adds a matching `## [X.Y.Z]` entry to `packages/convex-analytics/CHANGELOG.md`, then push the tag
   `vX.Y.Z` on that `main` commit.

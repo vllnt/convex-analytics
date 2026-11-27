@@ -9,7 +9,8 @@ Mount with `app.use(analytics, { httpPrefix: "/analytics" })`; `/metric` below t
 exposed. See [Quick Start](quick-start.md#6-optional-rest-access) for key setup through the
 component's `mutations.configSet` (there is no `AnalyticsClient.configSet` method).
 
-Source: `packages/convex-analytics/src/component/http.ts`.
+Source: `src/component/http.ts` in the package (`packages/convex-analytics/src/component/http.ts`
+in the repository).
 
 ## Endpoints
 

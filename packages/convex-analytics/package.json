@@ -39,12 +39,22 @@
   "files": [
     "dist",
     "src",
+    "docs/quick-start.md",
+    "docs/client-sdk.md",
+    "docs/schema.md",
+    "docs/api-reference.md",
+    "docs/web-preset.md",
+    "docs/multi-product.md",
+    "docs/architecture.md",
     "README.md",
     "LICENSE",
+    "CHANGELOG.md",
+    "llms.txt",
     "!src/**/*.test.*",
-    "!src/**/*.spec.*"],
+    "!src/**/*.spec.*"
+  ],
   "scripts": {
-    "build": "rm -rf dist && tsc && cp ../../README.md ../../LICENSE ./",
+    "build": "rm -rf dist docs && tsc && cp ../../README.md ../../LICENSE ../../llms.txt ./ && cp -R ../../docs ./docs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -53,6 +63,7 @@
     "lint": "pnpm --dir ../.. check:agents && eslint --cache --cache-location node_modules/.cache/eslint/ src/",
     "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck",
     "codegen": "node scripts/codegen.mjs",
+    "test:package": "node scripts/test-package.mjs",
     "build:codegen": "pnpm codegen && pnpm build"
   },
   "dependencies": {
@@ -100,7 +111,7 @@
     "type": "github",
     "url": "https://github.com/sponsors/bntvllnt"
   },
-  "homepage": "https://github.com/vllnt/convex-analytics#readme",
+  "homepage": "https://oss.vllnt.com/packages/convex-analytics",
   "bugs": {
     "url": "https://github.com/vllnt/convex-analytics/issues"
   },

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1] - Unreleased
 
+### Added
+
+- The npm package now ships the user docs (`docs/*.md`), `llms.txt` and `CHANGELOG.md`, so
+  `node_modules/@vllnt/convex-analytics/` holds docs that match the installed version.
+  `llms.txt` links to them with relative paths. `pnpm test:package` (run in CI) installs the
+  packed tarball and fails when a required file is missing, an internal file ships, or a
+  relative link does not resolve.
+
 ### Fixed
 
 - Reject clearly invalid input with typed `ConvexError` codes (`EMPTY_STRING`,
@@ -48,6 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overrides.
 - Docs: input-error table, PII guidance, and an explicit statement that the component never
   logs event data.
+- Docs match the source: the `scopes` table is documented (six tables, not five), the sharded
+  counter is keyed by `(scope, name)`, `convex` is a required peer dependency, and web-preset
+  examples spread the readonly `webDimensions` tuple (`dimensions: [...webDimensions]`) so
+  they type-check.
+- Package metadata: `homepage` is https://oss.vllnt.com/packages/convex-analytics. README adds
+  "For coding agents" and "Related packages" sections.
+- Release flow: canary publishes on every qualifying push to `main` without a repository-variable
+  gate, and a change to the shipped docs, `llms.txt`, README, LICENSE or changelog alone now
+  triggers it.
 
 ## [0.1.0] - 2026-09-01
 

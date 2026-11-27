@@ -67,8 +67,9 @@ at 100%, no-leak (scopeRef-gated, aggregates only — never raw events or cross-
 policy (mirrors the `oss-packages` hub *Version hold*): public **and** canary, never a stable
 bump, so the package gets dogfooded before it's blessed. Ship all build phases first, *then* release.
 **Exit criteria:** all build phases above (`generic-core` → `react-tooling`) shipped and CI-green at
-100% E2E; the repo is **public**; `publish.yml` carries the fleet-standard **canary** job (gated on
-`CANARY_ENABLED=true`, OIDC trusted publishing + `--provenance`) auto-publishing `0.1.0-canary.<sha>`
+100% E2E; the repo is **public**; `publish.yml` carries the fleet-standard **canary** job (originally
+gated on a repository variable, gate since removed; OIDC trusted publishing + `--provenance`)
+auto-publishing `0.1.0-canary.<sha>`
 on every qualifying push to `main`; npm `latest` resolves the first canary (npm requires a `latest`),
 the `canary` tag advances per push; **the version stays pinned at `0.1.0` — no bump past it until the
 owner cuts the first stable release** (`stable-release` below); README documents the
@@ -76,7 +77,7 @@ generic-core-vs-web-preset split + the predefined-vs-export boundary.
 
 - [-] first-release.1 Name + wire the 2nd real consumer (stranger test) at 100% E2E → moved to `dogfood.1` (the 2nd consumer is validated by dogfooding the public canary, not a precondition of it)
 - [x] first-release.2 Docs — README documents the generic-core-vs-web-preset split, the full config surface + defaults, the predefined-vs-export boundary (*What it serves*), and the events-vs-analytics distinction (authoritative in-app aggregate, complements a warehouse)
-- [x] first-release.3 Adopt the fleet-standard `publish.yml` **canary** job (replaced the disabled `workflow_dispatch` stub) — monorepo-aware (publishes `@vllnt/convex-analytics` + `convex-analytics-mcp` at pinned `0.1.0`), gated on `CANARY_ENABLED`, OIDC `--provenance`, `0.1.0-canary.<sha>` on push to `main`; `workflow_dispatch` for stable. **Owner runtime step:** flip `CANARY_ENABLED=true` + make the repo public to start canary publishing.
+- [x] first-release.3 Adopt the fleet-standard `publish.yml` **canary** job (replaced the disabled `workflow_dispatch` stub) — monorepo-aware (publishes `@vllnt/convex-analytics` + `convex-analytics-mcp` at pinned `0.1.0`), originally gated on a repository variable (gate since removed), OIDC `--provenance`, `0.1.0-canary.<sha>` on push to `main`; `workflow_dispatch` for stable. **Owner runtime step:** make the repo public to start canary publishing.
 
 ## dogfood [PLANNED]
 

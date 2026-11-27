@@ -2,7 +2,8 @@
 
 TypeScript API reference for the `AnalyticsClient<TProps>` class.
 
-Source: `packages/convex-analytics/src/client/index.ts`
+Source: `src/client/index.ts` in the package (`packages/convex-analytics/src/client/index.ts`
+in the repository).
 
 ## Constructor
 

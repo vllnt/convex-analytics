@@ -182,7 +182,7 @@ export interface TrackPageviewOpts {
  * @returns The `track` result passed through from the client.
  * @example
  * ```ts
- * const analytics = new AnalyticsClient(components.analytics, { dimensions: webDimensions });
+ * const analytics = new AnalyticsClient(components.analytics, { dimensions: [...webDimensions] });
  * await trackPageview(analytics, ctx, {
  *   path: "/pricing",
  *   ua: request.headers.get("user-agent") ?? undefined,
