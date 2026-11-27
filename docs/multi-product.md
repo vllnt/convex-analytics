@@ -32,9 +32,9 @@ Every read takes the same `scope` option; omit it to fall back to the client's d
 
 ## What scope isolates
 
-- `events`, `rollups`, `subjects`, `sessions`, and `config` rows are keyed by `scope`.
+- `events`, `rollups`, `subjects`, `sessions`, `scopes`, and `config` rows are keyed by `scope`.
 - All indexes lead with `scope`, so reads never span partitions.
-- The sharded counter and aggregate namespaces are `scope:name`, so totals are per-scope.
+- The sharded counter is keyed by `(scope, name)`, so totals are per-scope.
 - `configure` persists retention/sampling/idle per scope.
 
 ## Patterns

@@ -15,7 +15,8 @@ track(ctx, name, opts)
   |
   +- 3. Dedupe (when dedupeKey set + already exists in scope) -> "duplicate"
   |
-  +- 4. Insert raw event (seq derived from session.eventCount)
+  +- 4. Register the scope in `scopes` (first event only), insert raw event
+  |     (seq derived from session.eventCount)
   |
   +- 5. Upsert session (when sessionRef set)
   |
@@ -24,21 +25,21 @@ track(ctx, name, opts)
   +- 7. Rollup-on-write: for each granularity bucket, increment the total row
   |     and one row per host-declared dimension present in props
   |
-  +- 8. Sharded counter increment (namespace "scope:name")
+  +- 8. Sharded counter increment (keyed by (scope, name))
   |
   +- return "tracked"
 ```
 
 Reads come straight from the pre-aggregated `rollups` table (or the sharded counter for an
 unbounded total) — `metric`, `top`, and `timeseries` never scan raw events. `funnel`,
-`retention`, and `uniques` read the `events` / `subjects` tables directly.
+`distribution`, and `list` read the `events` table; `retention` and `uniques` read `subjects`.
 
 ## Child components
 
 | Component      | Package                       | Role                                               |
 | -------------- | ----------------------------- | -------------------------------------------------- |
 | aggregate      | `@convex-dev/aggregate`       | Mounted for compatibility; not written or read.    |
-| shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `scope:name` (16 shards).           |
+| shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `(scope, name)` (16 shards).        |
 | rateLimiter    | `@convex-dev/rate-limiter`    | Per-`sessionRef` token bucket (100/min, burst 10). |
 
 Mounted in `convex.config.ts`:
@@ -52,12 +53,12 @@ component.use(rateLimiter);
 
 ## Crons
 
-Both run inside the component and are idempotent.
+Both run inside the component, are idempotent, and visit every scope in the `scopes` table.
 
 | Cron            | Schedule | What it does                                                                                    |
 | --------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `prune`         | Daily    | Deletes raw events older than `retentionDays` per scope (rollups kept forever). Capped per run. |
-| `closeSessions` | Periodic | Sets `endTs` on sessions idle past `sessionIdleMs`.                                             |
+| `prune`         | 24 hours | Deletes raw events older than `retentionDays` per scope (rollups kept forever). Capped per run. |
+| `closeSessions` | 30 min   | Sets `endTs` on sessions idle past `sessionIdleMs`.                                             |
 
 `backfill` is a non-cron internal mutation that re-derives a `(scope, name)`'s rollups from
 the retained raw events — useful after changing dimensions.

@@ -94,12 +94,14 @@ Passed to the `AnalyticsClient` constructor. All optional — the defaults work 
 | --------------- | --------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
 | `scope`         | `string`                          | `"default"` | Multi-tenant partition; isolates one tenant's data.                                 |
 | `dimensions`    | `string[]`                        | `[]`        | Prop keys to roll up on (drives rollup-on-write). Empty = count by event name only. |
-| `granularities` | `("minute" \| "hour" \| "day")[]` | `["day"]`   | Rollup bucket sizes (`minute` for short live windows).                              |
+| `granularities` | `("minute" \| "hour" \| "day")[]` | `["day"]`   | Rollup bucket sizes (`minute` for short live windows). Keep `"day"`: see below.     |
 | `retentionDays` | `number`                          | `90`        | Raw-event TTL in days (rollups are kept forever). Applied via `configure`.          |
 | `sampleRate`    | `number`                          | `1`         | Fraction `0..1` of events to keep at ingest.                                        |
 | `sessionIdleMs` | `number`                          | `1800000`   | Idle timeout before a session is closed. Applied via `configure`.                   |
 
 `scope`, `dimensions`, `granularities`, and `sampleRate` apply per call from the client.
+`top`, and `metric` with a `range` or `where`, read only `day` rollups: if `granularities`
+leaves out `"day"`, they return `[]` and `0`.
 `retentionDays`, `sampleRate`, and `sessionIdleMs` are persisted for the prune/close-sessions
 crons by calling `analytics.configure(ctx, { ... })` once.
 `TProps` is compile-time typing only; validate untrusted props in host wrappers. There is no
@@ -156,7 +158,8 @@ The Convex-native, authoritative in-app aggregate layer — predefined-dimension
 Declare the dimensions you'll query; read cost still grows with matching buckets and values; ad-hoc or
 retroactive questions over **non-declared** dimensions, or beyond the raw-event retention window,
 are an export concern. `metric` / `top` / `timeseries` read pre-aggregated rollups (kept forever);
-`funnel` / `retention` / `distribution` read raw events in range (index-backed, bounded, TTL-pruned).
+`funnel` / `distribution` read raw events in range (index-backed, bounded, TTL-pruned) and `retention`
+reads per-subject first/last-seen rows.
 
 ## Web preset
 
@@ -165,7 +168,7 @@ import { AnalyticsClient } from "@vllnt/convex-analytics";
 import { webDimensions, trackPageview } from "@vllnt/convex-analytics/web";
 
 const analytics = new AnalyticsClient(components.analytics, {
-  dimensions: webDimensions,
+  dimensions: [...webDimensions], // readonly tuple; `dimensions` takes a string[]
 });
 
 await trackPageview(analytics, ctx, {
@@ -220,21 +223,37 @@ analyticsTest.register(t);
 
 [Schema](docs/schema.md) · [Client SDK](docs/client-sdk.md) · [REST API](docs/api-reference.md) ·
 [Web Preset](docs/web-preset.md) · [Multi-Product](docs/multi-product.md) ·
-[Architecture](docs/architecture.md). For AI agents:
-[`llms.txt`](llms.txt), the maintained documentation index.
+[Architecture](docs/architecture.md) ·
+[`llms.txt`](llms.txt) (documentation index).
+
+## For coding agents
+
+The npm package bundles these docs at `node_modules/@vllnt/convex-analytics/docs/`, along
+with `llms.txt`, `CHANGELOG.md` and the TypeScript `src/`. They match the installed version.
+Read them before writing code against this package.
+
+## Related packages
+
+| Package | Use it when |
+| ------- | ----------- |
+| [`@vllnt/analytics`](https://oss.vllnt.com/packages/analytics) | You need browser-side tracking with consent management and React integration. Use this component for counts stored in your Convex backend. |
+| [`@vllnt/convex-events`](https://oss.vllnt.com/packages/convex-events) | You need an append-only activity feed and event ledger per subject. Use this component for aggregate counts, breakdowns and trends. |
+| [`@vllnt/convex-experiments`](https://oss.vllnt.com/packages/convex-experiments) | You need A/B variant assignment and deduped exposure tracking. Use this component for general event metrics. |
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/vllnt/convex-analytics/blob/main/CONTRIBUTING.md).
 
 ## Author
 
 Built by [bntvllnt](https://github.com/bntvllnt) · [bntvllnt.com](https://bntvllnt.com) · [X @bntvllnt](https://x.com/bntvllnt)
-
-Part of the [@vllnt](https://github.com/vllnt) Convex component fleet — [vllnt.com](https://vllnt.com)
 
 If this is useful, [sponsor the work](https://github.com/sponsors/bntvllnt).
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+Part of vllnt oss: https://oss.vllnt.com

@@ -3,27 +3,35 @@
 > A generic, configurable, embedded analytics component for Convex — any event, any dimension, any domain — with rollup-on-write for reactive aggregate reads. Only unfiltered lifetime metrics use fixed-shard counter reads; other aggregate reads scale with matching rollups. Mount via `app.use()` in any Convex app.
 
 The component owns a standardized, typed schema (events, rollups, subjects, sessions,
-config); host data enters only as opaque refs (`subjectRef`, `sessionRef`) and host-typed
-scalar `props` — never `v.any()`. Host-declared `dimensions` drive rollup-on-write; the verb
-set (`metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `distribution`, `list`)
-is generic, across `minute`/`hour`/`day` granularities. Web
+scopes, config); host data enters only as opaque refs (`subjectRef`, `sessionRef`) and
+host-typed scalar `props` — never `v.any()`. Host-declared `dimensions` drive rollup-on-write;
+the verb set (`metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `distribution`,
+`list`) is generic, across `minute`/`hour`/`day` granularities. Web
 analytics is the opt-in `@vllnt/convex-analytics/web` preset; reactive hooks ship as the
-optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@^1.45.0` (optional;
-`react@>=18` optional for the `./react` entry).
+optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@^1.45.0`
+(`react@>=18` optional for the `./react` entry).
+
+For coding agents: these docs ship inside the npm package at
+`node_modules/@vllnt/convex-analytics/docs/` and match the installed version, as do
+`src/` and `CHANGELOG.md`. Read them before writing code against this package.
 
 ## Docs
 
-- [Quick Start](docs/quick-start.md): Install, mount, track, read
-- [Client SDK](docs/client-sdk.md): `AnalyticsClient<TProps>` config, verbs, types
-- [Schema](docs/schema.md): events, rollups, subjects, sessions, config + indexes
-- [REST API](docs/api-reference.md): the five generic routes (/track, /metric, /top, /timeseries, /uniques)
-- [Web Preset](docs/web-preset.md): opt-in web dimensions + UA/geo helpers + React note
-- [Multi-Product](docs/multi-product.md): the opaque `scope` partition
-- [Architecture](docs/architecture.md): rollup-on-write, child components, crons
+- [Quick Start](./docs/quick-start.md): Install, mount, track, read
+- [Client SDK](./docs/client-sdk.md): `AnalyticsClient<TProps>` config, verbs, types
+- [Schema](./docs/schema.md): events, rollups, subjects, sessions, scopes, config + indexes
+- [REST API](./docs/api-reference.md): the five generic routes (/track, /metric, /top, /timeseries, /uniques)
+- [Web Preset](./docs/web-preset.md): opt-in web dimensions + UA/geo helpers + React note
+- [Multi-Product](./docs/multi-product.md): the opaque `scope` partition
+- [Architecture](./docs/architecture.md): rollup-on-write, child components, crons
+- [Changelog](./CHANGELOG.md): version history, including unreleased changes
+
+## Ecosystem
+
+- [vllnt oss](https://oss.vllnt.com/llms.txt): index of every `@vllnt` package
 
 ## Optional
 
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](packages/convex-analytics/CHANGELOG.md)
-- [Security](SECURITY.md): SECURITY.md
-- [License](LICENSE): MIT license
+- [Contributing](https://github.com/vllnt/convex-analytics/blob/main/CONTRIBUTING.md)
+- [Security](https://github.com/vllnt/convex-analytics/blob/main/SECURITY.md)
+- [License](./LICENSE): MIT license

@@ -1,8 +1,8 @@
 # Database Schema
 
-Five sandboxed tables. Generic and domain-neutral — zero hardcoded web fields, zero
-`v.any()`. Schema source of truth:
-`packages/convex-analytics/src/component/schema.ts`.
+Six sandboxed tables. Generic and domain-neutral — zero hardcoded web fields, zero
+`v.any()`. Schema source of truth: `src/component/schema.ts` in the package
+(`packages/convex-analytics/src/component/schema.ts` in the repository).
 
 ## events
 
@@ -24,7 +24,7 @@ kept forever).
 
 | Index                 | Fields                  | Purpose                                  |
 | --------------------- | ----------------------- | ---------------------------------------- |
-| `by_scope_name_ts`    | [scope, name, ts]       | Primary query path; funnel, list, prune. |
+| `by_scope_name_ts`    | [scope, name, ts]       | funnel, distribution, list, backfill.    |
 | `by_scope_ts`         | [scope, ts]             | Retention prune.                         |
 | `by_dedupe`           | [scope, dedupeKey]      | Dedupe lookup at ingest.                 |
 
@@ -94,6 +94,21 @@ by the `closeSessions` cron after `sessionIdleMs`.
 | `by_scope_session` | [scope, sessionRef] | Direct lookup / upsert.                    |
 | `by_scope_endTs_lastTs` | [scope, endTs, lastTs] | Idle open-session scan for close-sessions cron. |
 
+## scopes
+
+Registry of every scope that has tracked an event. Written by `track` the first time a scope
+is seen; the `prune` and `closeSessions` crons page through it to visit each scope.
+
+| Field   | Type   | Description |
+| ------- | ------ | ----------- |
+| `scope` | string | Partition.  |
+
+**Indexes:**
+
+| Index      | Fields  | Purpose                         |
+| ---------- | ------- | ------------------------------- |
+| `by_scope` | [scope] | Existence check; cron paging.   |
+
 ## config
 
 Cron-relevant config, keyed by `(scope, key)`. Values are stored as strings. Set via
@@ -116,5 +131,5 @@ Cron-relevant config, keyed by `(scope, key)`. Values are stored as strings. Set
 | Component      | Package                       | Role                                     |
 | -------------- | ----------------------------- | ---------------------------------------- |
 | aggregate      | `@convex-dev/aggregate`       | Mounted for compatibility; not written or read. |
-| shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `scope:name` (16 shards). |
+| shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `(scope, name)` (16 shards). |
 | rateLimiter    | `@convex-dev/rate-limiter`    | Per-`sessionRef` token bucket at ingest. |

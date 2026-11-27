@@ -25,7 +25,7 @@ packages/
       web/index.ts             # opt-in web preset (webDimensions, parseUserAgent, geoFromHeaders, trackPageview)
       react/index.tsx          # optional ./react hooks (useMetric/useTop/useTimeseries/useUniques)
       component/
-        schema.ts              # events, rollups, subjects, sessions, config (sandboxed)
+        schema.ts              # events, rollups, subjects, sessions, scopes, config (sandboxed)
         convex.config.ts       # defineComponent("analytics") + aggregate/shardedCounter/rateLimiter
         mutations.ts           # track, configure, configSet
         queries.ts             # metric, top, timeseries, uniques, funnel, retention, distribution, list, configGet
@@ -39,7 +39,7 @@ packages/
 | Concern | Owner |
 |---------|-------|
 | Event store + rollups + subject/session lifecycle (track, read verbs, retention) | **Component** |
-| `events`, `rollups`, `subjects`, `sessions`, `config` sandboxed tables | **Component** |
+| `events`, `rollups`, `subjects`, `sessions`, `scopes`, `config` sandboxed tables | **Component** |
 | Rollup-on-write aggregation, crons (prune, closeSessions) | **Component** |
 | Subject / session identity, auth / authz, API-key gating policy | **Host** |
 | Meaning of `name`, `subjectRef`, `sessionRef`, and each `props` key | **Host** |
@@ -66,8 +66,9 @@ The component never reads host or sibling tables. Host data enters only as opaqu
   dim, val)` rollup rows (a total row + one per declared dimension present in `props`) as the
   event lands across `minute`/`hour`/`day` buckets (minute opt-in for live windows). `metric` /
   `top` / `timeseries` read the pre-aggregated rows in O(1); there is no 5-minute rollup lag.
-  `backfill` re-derives rollups from raw events when dimensions change. `funnel` / `retention` /
-  `distribution` are computed from raw events at query time (index-backed, bounded) — the
+  `backfill` re-derives rollups from raw events when dimensions change. `funnel` /
+  `distribution` are computed from raw events at query time (index-backed, bounded) and
+  `retention` from `subjects` first/last-seen rows — the
   histogram `distribution(name, measure, { buckets })` buckets a numeric `props` measure with an
   overflow bin.
 - **Web is a preset, never baked in.** The sandboxed core has zero web fields. The web layer
@@ -86,8 +87,8 @@ The component never reads host or sibling tables. Host data enters only as opaqu
   via the `TProps` generic + optional host `propsValidator`.
 - **Optional `./react` layer.** Hooks wrap `convex/react`'s `useQuery` over the host's
   re-exported aggregate query refs (`metric`, `top`, `timeseries`, `uniques`) — aggregates
-  only, scope-gated, no raw events on the client. `react` + `convex` are optional peer deps;
-  backend-only consumers pull zero React. Render-tested and coverage-included at 100%.
+  only, scope-gated, no raw events on the client. `react` is an optional peer dep (`convex` is
+  required); backend-only consumers pull zero React. Render-tested and coverage-included at 100%.
 - **Auth-agnostic.** No auth library assumed. The host resolves identity, gates access, and
   passes opaque refs in. REST routes gate on an `x-api-key` matching the host-configured
   `apiKeys` config row, compared timing-safe.
@@ -116,7 +117,7 @@ pnpm lint           # lint all packages
 |-----|------|
 | `README.md` | Value prop, features, generic-core-vs-web split, install, usage, config, API summary, web/react, security, testing |
 | `docs/client-sdk.md` | Full `AnalyticsClient<TProps>` config + verb reference + types |
-| `docs/schema.md` | The five sandboxed tables + indexes |
+| `docs/schema.md` | The six sandboxed tables + indexes |
 | `docs/api-reference.md` | The five generic REST routes |
 | `docs/web-preset.md` | Opt-in web dimensions + UA/geo helpers + React note |
 | `docs/multi-product.md` | The opaque `scope` partition |
@@ -129,6 +130,14 @@ pnpm lint           # lint all packages
 After any source, README, or docs change, update the root `llms.txt` index if links or package
 context changed. Keep one root `llms.txt`; do not generate a second index or a full-source bundle.
 Grep stale values before committing.
+
+The package build copies `README.md`, `LICENSE`, `llms.txt` and `docs/` into
+`packages/convex-analytics/`, and `files` in its `package.json` ships the user pages (not
+`docs/REBUILD.md`). `llms.txt` links are relative to the published package root, so
+`./CHANGELOG.md` resolves there, not at the repository root. `pnpm --filter
+@vllnt/convex-analytics test:package` (after `pnpm build`, run in CI) installs the packed
+tarball and checks the required files, the excluded internal files, and every relative link.
+Add a new user page to `files` and to `REQUIRED` in `scripts/test-package.mjs`.
 
 ## Generated code
 

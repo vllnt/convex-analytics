@@ -9,7 +9,8 @@ Mount with `app.use(analytics, { httpPrefix: "/analytics" })`; `/metric` below t
 exposed. See [Quick Start](quick-start.md#6-optional-rest-access) for key setup through the
 component's `mutations.configSet` (there is no `AnalyticsClient.configSet` method).
 
-Source: `packages/convex-analytics/src/component/http.ts`.
+Source: `src/component/http.ts` in the package (`packages/convex-analytics/src/component/http.ts`
+in the repository).
 
 ## Endpoints
 
@@ -94,10 +95,12 @@ session rate-limit check.
 
 - Configure keys by writing a JSON string array to config `(scope, "apiKeys")` (the `apiKeys` config key).
 - Missing or invalid key → `401 { "error": "..." }`.
-- Invalid input returns `400 { "error": "...", "code": "..." }`: a body that is not a JSON
-  object, invalid JSON, missing `name` / `dimensions`, `dimensions` that is not a string array,
-  unknown `granularities`, nested or array `props` values, prop keys Convex cannot store, and
-  every typed error in the table below (for example a non-numeric `from`, `to`, or `limit`).
+- Invalid input returns `400`. Typed errors from the table below (for example a non-numeric
+  `from`, `to`, or `limit`, nested or array `props` values, prop keys Convex cannot store)
+  return `{ "error": "...", "code": "..." }`. Checks done in the route itself return
+  `{ "error": "..." }` without `code`: a body that is not a JSON object, invalid JSON, missing
+  `name` / `dimensions` or a required query parameter, `dimensions` that is not a string array,
+  `props` that is not an object, and unknown `granularities` / `granularity`.
   Any other failure (for example a Convex argument-validator error) still fails the action.
 - A stored `apiKeys` value that is not a JSON array of strings returns `500 { "error": "API keys
 misconfigured" }`.

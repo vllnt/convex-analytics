@@ -4,7 +4,7 @@
  * Thin, tree-shakeable wrappers over `convex/react`'s `useQuery` for the
  * component's **aggregate** read verbs (metric, timeseries, top, uniques).
  * The backend core installs and runs with zero React — these hooks are an
- * opt-in `./react` entry; `react` and `convex` are optional peer deps.
+ * opt-in `./react` entry; `react` is an optional peer dep.
  *
  * No-leak: aggregates ONLY (no raw events) and every call is scope-gated, so a
  * hook can never surface another scope's rows or a raw event payload on the
