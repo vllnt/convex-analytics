@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `track`, `configSet` and `configure` reject a `scope`, `name`, `subjectRef`, `sessionRef`,
+  `dedupeKey`, dimension or config `key` over 512 characters with `STRING_TOO_LONG`.
 - Reject clearly invalid input with typed `ConvexError` codes (`EMPTY_STRING`,
   `INVALID_TIMESTAMP`, `INVALID_SAMPLE_RATE`, `INVALID_PROP_VALUE`, `INVALID_PROP_KEY`,
   `INVALID_COUNT`, `INVALID_CURSOR`, `INVALID_BUCKETS`, `INVALID_CONFIG`): `NaN` or infinite
