@@ -94,12 +94,14 @@ Passed to the `AnalyticsClient` constructor. All optional — the defaults work 
 | --------------- | --------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
 | `scope`         | `string`                          | `"default"` | Multi-tenant partition; isolates one tenant's data.                                 |
 | `dimensions`    | `string[]`                        | `[]`        | Prop keys to roll up on (drives rollup-on-write). Empty = count by event name only. |
-| `granularities` | `("minute" \| "hour" \| "day")[]` | `["day"]`   | Rollup bucket sizes (`minute` for short live windows).                              |
+| `granularities` | `("minute" \| "hour" \| "day")[]` | `["day"]`   | Rollup bucket sizes (`minute` for short live windows). Keep `"day"`: see below.     |
 | `retentionDays` | `number`                          | `90`        | Raw-event TTL in days (rollups are kept forever). Applied via `configure`.          |
 | `sampleRate`    | `number`                          | `1`         | Fraction `0..1` of events to keep at ingest.                                        |
 | `sessionIdleMs` | `number`                          | `1800000`   | Idle timeout before a session is closed. Applied via `configure`.                   |
 
 `scope`, `dimensions`, `granularities`, and `sampleRate` apply per call from the client.
+`top`, and `metric` with a `range` or `where`, read only `day` rollups: if `granularities`
+leaves out `"day"`, they return `[]` and `0`.
 `retentionDays`, `sampleRate`, and `sessionIdleMs` are persisted for the prune/close-sessions
 crons by calling `analytics.configure(ctx, { ... })` once.
 `TProps` is compile-time typing only; validate untrusted props in host wrappers. There is no
@@ -156,7 +158,8 @@ The Convex-native, authoritative in-app aggregate layer — predefined-dimension
 Declare the dimensions you'll query; read cost still grows with matching buckets and values; ad-hoc or
 retroactive questions over **non-declared** dimensions, or beyond the raw-event retention window,
 are an export concern. `metric` / `top` / `timeseries` read pre-aggregated rollups (kept forever);
-`funnel` / `retention` / `distribution` read raw events in range (index-backed, bounded, TTL-pruned).
+`funnel` / `distribution` read raw events in range (index-backed, bounded, TTL-pruned) and `retention`
+reads per-subject first/last-seen rows.
 
 ## Web preset
 
@@ -239,7 +242,7 @@ Read them before writing code against this package.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/vllnt/convex-analytics/blob/main/CONTRIBUTING.md).
 
 ## Author
 

@@ -86,8 +86,8 @@ The component never reads host or sibling tables. Host data enters only as opaqu
   via the `TProps` generic + optional host `propsValidator`.
 - **Optional `./react` layer.** Hooks wrap `convex/react`'s `useQuery` over the host's
   re-exported aggregate query refs (`metric`, `top`, `timeseries`, `uniques`) — aggregates
-  only, scope-gated, no raw events on the client. `react` + `convex` are optional peer deps;
-  backend-only consumers pull zero React. Render-tested and coverage-included at 100%.
+  only, scope-gated, no raw events on the client. `react` is an optional peer dep (`convex` is
+  required); backend-only consumers pull zero React. Render-tested and coverage-included at 100%.
 - **Auth-agnostic.** No auth library assumed. The host resolves identity, gates access, and
   passes opaque refs in. REST routes gate on an `x-api-key` matching the host-configured
   `apiKeys` config row, compared timing-safe.

@@ -39,6 +39,9 @@ interface AnalyticsConfig {
 | `sampleRate`    | `1`         | per `track`     | Fraction of events kept at ingest.                             |
 | `sessionIdleMs` | `1_800_000` | via `configure` | Idle timeout before a session is closed.                       |
 
+`top`, and `metric` with a `range` or `where`, read only `day` rollups: if `granularities`
+leaves out `"day"`, they return `[]` and `0`. `timeseries` reads the granularity you ask for.
+
 `dimensions`, `granularities`, and `sampleRate` are passed into each `track` call. The
 cron-relevant values (`retentionDays`, `sampleRate`, `sessionIdleMs`) are persisted to the
 `config` table by calling `configure` once.

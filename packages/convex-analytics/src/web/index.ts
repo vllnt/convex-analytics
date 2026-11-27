@@ -173,7 +173,7 @@ export interface TrackPageviewOpts {
  * Host-side convenience: the component never sees web concepts — this helper
  * just assembles the `{@link webDimensions}`-shaped props and calls
  * `client.track(ctx, "page_view", { props })`. Pair with
- * `dimensions: webDimensions` on the client to get web rollups.
+ * `dimensions: [...webDimensions]` on the client to get web rollups.
  *
  * @typeParam C - The `AnalyticsClient` (structural) type.
  * @param client - An `AnalyticsClient` (or compatible) instance.

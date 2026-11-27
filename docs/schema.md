@@ -24,7 +24,7 @@ kept forever).
 
 | Index                 | Fields                  | Purpose                                  |
 | --------------------- | ----------------------- | ---------------------------------------- |
-| `by_scope_name_ts`    | [scope, name, ts]       | Primary query path; funnel, list, prune. |
+| `by_scope_name_ts`    | [scope, name, ts]       | funnel, distribution, list, backfill.    |
 | `by_scope_ts`         | [scope, ts]             | Retention prune.                         |
 | `by_dedupe`           | [scope, dedupeKey]      | Dedupe lookup at ingest.                 |
 

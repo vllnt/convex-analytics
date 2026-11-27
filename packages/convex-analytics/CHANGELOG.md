@@ -28,10 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `configure` rejects non-positive `retentionDays` and `sessionIdleMs`, which would otherwise
   make `prune` delete every event.
 - Inherited keys such as `constructor` are no longer rolled up as dimensions.
-- The REST routes return `400 { error, code }` for typed input errors, non-object bodies,
-  malformed `dimensions` / `granularities` / `props`, and non-numeric `from`, `to` or `limit`
-  (blank or malformed values used to widen the range silently); a malformed stored `apiKeys`
-  value returns `500` with a clear message instead of an unhandled exception.
+- The REST routes return `400 { error, code }` for typed input errors, including nested `props`
+  values and non-numeric `from`, `to` or `limit` (blank or malformed values used to widen the
+  range silently), and `400 { error }` for non-object bodies and malformed `dimensions` /
+  `granularities` / `props`; a malformed stored `apiKeys` value returns `500` with a clear
+  message instead of an unhandled exception.
 - `metric`, `top` and `timeseries` read only the rollup buckets in the requested range, and
   `uniques` reads only subjects active in range through a new `by_scope_lastSeen` index.
 - Add `.js` extensions to every relative import in `src/` so `@vllnt/convex-analytics/test`

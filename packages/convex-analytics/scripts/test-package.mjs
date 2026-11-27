@@ -2,7 +2,7 @@
  * Pack this package, install the tarball in a temporary project, and check what a
  * consumer gets under node_modules/@vllnt/convex-analytics/: the required docs and
  * entry points are present, contributor and internal files are absent, and every
- * relative link in llms.txt and docs/*.md resolves inside the installed package.
+ * relative link in llms.txt, README.md and docs/*.md resolves inside the installed package.
  *
  * Run after `pnpm build` (the build copies README, LICENSE, llms.txt and docs/ in).
  */
@@ -98,7 +98,7 @@ try {
     if (TEST_FILE.test(path)) failures.push(`test file shipped: ${relative(installed, path)}`);
   }
   const docs = existsSync(join(installed, "docs")) ? readdirSync(join(installed, "docs")) : [];
-  for (const file of ["llms.txt", ...docs.map((name) => `docs/${name}`)]) {
+  for (const file of ["llms.txt", "README.md", ...docs.map((name) => `docs/${name}`)]) {
     if (existsSync(join(installed, file))) checkLinks(installed, file);
   }
 } finally {
