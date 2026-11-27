@@ -66,8 +66,9 @@ The component never reads host or sibling tables. Host data enters only as opaqu
   dim, val)` rollup rows (a total row + one per declared dimension present in `props`) as the
   event lands across `minute`/`hour`/`day` buckets (minute opt-in for live windows). `metric` /
   `top` / `timeseries` read the pre-aggregated rows in O(1); there is no 5-minute rollup lag.
-  `backfill` re-derives rollups from raw events when dimensions change. `funnel` / `retention` /
-  `distribution` are computed from raw events at query time (index-backed, bounded) — the
+  `backfill` re-derives rollups from raw events when dimensions change. `funnel` /
+  `distribution` are computed from raw events at query time (index-backed, bounded) and
+  `retention` from `subjects` first/last-seen rows — the
   histogram `distribution(name, measure, { buckets })` buckets a numeric `props` measure with an
   overflow bin.
 - **Web is a preset, never baked in.** The sandboxed core has zero web fields. The web layer
