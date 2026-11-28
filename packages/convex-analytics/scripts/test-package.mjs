@@ -11,7 +11,7 @@
  * Run after `pnpm build` (the build copies README, LICENSE, llms.txt and docs/ in).
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -163,20 +163,26 @@ function checkEntryPoints(installed, consumer) {
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
     noEmit: true,
-    skipLibCheck: true,
     strict: true,
     target: ts.ScriptTarget.ES2022,
   });
+  // skipLibCheck stays off so errors in the installed package's own .d.ts files fail; errors in
+  // other packages' declarations are printed as ignored notes, not failures.
+  const own = [realpathSync(installed) + sep, realpathSync(file)];
+  const ignored = [];
   for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
     const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
     const where = diagnostic.file && diagnostic.start !== undefined
       ? `${relative(consumer, diagnostic.file.fileName)}:${String(diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line + 1)}`
       : "tsc";
-    problems.push(`entry-point consumer ${where}: ${message}`);
+    const path = diagnostic.file && realpathSync(diagnostic.file.fileName);
+    if (path && !own.some((prefix) => path.startsWith(prefix))) ignored.push(`${where}: ${message}`);
+    else problems.push(`entry-point consumer ${where}: ${message}`);
   }
   if (problems.length === 0) {
     console.log(`OK    entry points: ${String(entries.length - TYPE_CHECK_ONLY.size)} imported with Node, ${String(entries.length)} type-checked (nodenext, strict)`);
   }
+  for (const note of ignored) console.log(`NOTE  entry-point consumer: ignored, not in this package: ${note}`);
   return problems;
 }
 
