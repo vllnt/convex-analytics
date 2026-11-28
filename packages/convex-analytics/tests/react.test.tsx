@@ -16,17 +16,35 @@ vi.mock("convex/react", () => ({
   },
 }));
 
+import { makeFunctionReference } from "convex/server";
 import {
   useMetric,
   useTop,
   useTimeseries,
   useUniques,
+  type MetricArgs,
+  type TopArgs,
+  type TimeseriesArgs,
+  type UniquesArgs,
+  type TopRow,
+  type TimeseriesPoint,
+  type UniquesView,
 } from "../src/react/index.js";
 
-const metricRef = { kind: "metric" } as never;
-const topRef = { kind: "top" } as never;
-const timeseriesRef = { kind: "timeseries" } as never;
-const uniquesRef = { kind: "uniques" } as never;
+/**
+ * Convex codegen types a host query's args as an object type, not an interface; the mapped
+ * type gives the documented `*Args` interfaces that shape so they satisfy `DefaultFunctionArgs`.
+ */
+type HostArgs<T> = { [K in keyof T]: T[K] };
+
+const metricRef = makeFunctionReference<"query", HostArgs<MetricArgs>, number>("analytics:metric");
+const topRef = makeFunctionReference<"query", HostArgs<TopArgs>, TopRow[]>("analytics:top");
+const timeseriesRef = makeFunctionReference<"query", HostArgs<TimeseriesArgs>, TimeseriesPoint[]>(
+  "analytics:timeseries",
+);
+const uniquesRef = makeFunctionReference<"query", HostArgs<UniquesArgs>, UniquesView>(
+  "analytics:uniques",
+);
 
 beforeEach(() => {
   calls.length = 0;
