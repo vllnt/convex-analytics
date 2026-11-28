@@ -1,7 +1,7 @@
 {
   "name": "@vllnt/convex-analytics",
   "version": "0.1.1",
-  "description": "Generic, configurable analytics component for Convex \u2014 any event, any dimension, any domain; rollup-on-write with funnels, retention, uniques",
+  "description": "Generic, configurable analytics component for Convex — any event, any dimension, any domain; rollup-on-write with funnels, retention, uniques",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.34.8",
@@ -68,25 +68,25 @@
   },
   "dependencies": {
     "@convex-dev/aggregate": "^0.3.4",
-    "@convex-dev/rate-limiter": "^0.4.2",
-    "@convex-dev/sharded-counter": "^0.2.3"
+    "@convex-dev/rate-limiter": "^0.4.3",
+    "@convex-dev/sharded-counter": "^0.2.4"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@typescript/native": "npm:typescript@7.0.2",
-    "@vitest/coverage-v8": "^5.0.5",
-    "@vllnt/typescript": "2.0.0",
-    "convex": "^1.48.0",
-    "convex-test": "^0.0.65",
-    "eslint": "^9.39.5",
-    "jsdom": "^30.1.3",
+    "@vitest/coverage-v8": "^5.1.1",
+    "@vllnt/typescript": "3.0.0",
+    "convex": "^1.51.0",
+    "convex-test": "^0.0.73",
+    "eslint": "^10.15.0",
+    "jsdom": "^31.0.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   },
   "peerDependencies": {
     "convex": "^1.45.0",

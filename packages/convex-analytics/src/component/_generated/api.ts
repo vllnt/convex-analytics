@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as internal_mutations from "../internal_mutations.js";
 import type * as mutations from "../mutations.js";
@@ -22,6 +23,7 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  crons: typeof crons;
   http: typeof http;
   internal_mutations: typeof internal_mutations;
   mutations: typeof mutations;
