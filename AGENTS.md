@@ -144,6 +144,8 @@ The package build copies `README.md`, `LICENSE`, `llms.txt` and `docs/` into
 `./CHANGELOG.md` resolves there, not at the repository root. `pnpm --filter
 @vllnt/convex-analytics test:package` (after `pnpm build`, run in CI) installs the packed
 tarball and checks the required files, the excluded internal files, and every relative link.
+It installs with pnpm, without a lockfile, under the `minimumReleaseAge` and
+`minimumReleaseAgeExclude` it reads from the root `pnpm-workspace.yaml`.
 Add a new user page to `files` and to `REQUIRED` in `scripts/test-package.mjs`.
 It also imports every `exports` entry with plain Node (except the commented
 `TYPE_CHECK_ONLY` entries) and type-checks a strict `nodenext` consumer importing from every
