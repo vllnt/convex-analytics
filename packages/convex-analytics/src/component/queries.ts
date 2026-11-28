@@ -332,7 +332,7 @@ export const retention = query({
  * values above the last bound land in `overflow`. Non-numeric measure values are
  * ignored. `count`/`sum` give the population size and total (so mean = sum/count).
  * Index-backed (`by_scope_name_ts`) and bounded — computed from raw events, like
- * `funnel`/`retention`.
+ * `funnel` (`retention` reads `subjects` first/last-seen rows instead).
  */
 export const distribution = query({
   args: {

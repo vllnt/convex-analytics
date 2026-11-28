@@ -1,6 +1,6 @@
 {
   "name": "@vllnt/convex-analytics",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "TypeScript Convex component for event analytics: track events, roll up counts on write, and query metrics, breakdowns, time series, funnels and retention.",
   "license": "MIT",
   "type": "module",
