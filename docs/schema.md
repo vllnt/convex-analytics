@@ -6,8 +6,9 @@ Six sandboxed tables. Generic and domain-neutral — zero hardcoded web fields, 
 
 ## events
 
-Raw event log. One row per tracked event. TTL-pruned past `retentionDays` (rollups are
-kept forever).
+Raw event log. One row per tracked event. TTL-pruned past `retentionDays`. Rollups are kept
+forever unless you run `backfill`: it deletes every rollup row of that name and rebuilds them
+only from raw events still retained, so buckets older than `retentionDays` drop to 0.
 
 | Field        | Type                   | Description                                                      |
 | ------------ | ---------------------- | ---------------------------------------------------------------- |
@@ -96,8 +97,9 @@ by the `closeSessions` cron after `sessionIdleMs`.
 
 ## scopes
 
-Registry of every scope that has tracked an event. Written by `track` the first time a scope
-is seen; the `prune` and `closeSessions` crons page through it to visit each scope.
+Registry of every scope the component has seen. Written the first time a scope is seen by
+`track`, `configSet` or `configure`; the `prune` and `closeSessions` crons page through it to
+visit each scope.
 
 | Field   | Type   | Description |
 | ------- | ------ | ----------- |

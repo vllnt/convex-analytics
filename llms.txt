@@ -9,7 +9,8 @@ read retained raw events, `uniques` and `retention` read per-subject first/last-
 `list` pages raw events. Subjects, sessions and props are opaque host data; the component reads
 no auth. Opt-in entries: `@vllnt/convex-analytics/web` (web dimensions, user-agent and geo
 helpers), `@vllnt/convex-analytics/react` (hooks), `@vllnt/convex-analytics/test` (convex-test
-helper). Peer dependency: `convex@^1.45.0` (`react@>=18` optional, for `./react` only).
+helper). Peer dependency: `convex@^1.45.0` (`react@>=18` optional, imported only by `./react`;
+a transitive dependency still declares `react` as a required peer).
 
 These docs ship inside the npm package at `node_modules/@vllnt/convex-analytics/` and match the
 installed version, as do `src/` and `CHANGELOG.md`.
@@ -25,7 +26,7 @@ installed version, as do `src/` and `CHANGELOG.md`.
 
 ## Docs
 
-- [API table](./README.md#api): every export of every entry point, one line each
+- [API table](./README.md#api): every export of every entry point and the two component functions the client does not wrap, one line each
 - [Errors and fixes](./README.md#errors-and-fixes): every error code and message, cause and fix
 - [Limits and gotchas](./README.md#limits-and-gotchas): caps, defaults, silent no-ops
 - [Quick Start](./docs/quick-start.md): install, mount, track, read

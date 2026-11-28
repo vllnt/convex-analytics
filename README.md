@@ -107,7 +107,11 @@ Full reference: [docs/client-sdk.md](docs/client-sdk.md) (main entry, `./convex.
 | [`PaginationOpts`](docs/client-sdk.md#paginationopts) | `@vllnt/convex-analytics` (type) | `{ numItems, cursor }` |
 | [`EventPage`](docs/client-sdk.md#eventpage) | `@vllnt/convex-analytics` (type) | `{ page, isDone, continueCursor }` |
 | [`EventView`](docs/client-sdk.md#eventview) | `@vllnt/convex-analytics` (type) | One raw event returned by `list` |
+| [`configSet`](docs/client-sdk.md#configset) | `components.analytics.mutations` | Component mutation: store one config value, such as the REST `apiKeys` |
+| [`configGet`](docs/client-sdk.md#configget) | `components.analytics.queries` | Component query: read one stored config value, or `null` |
 | [`default` (component definition)](docs/client-sdk.md#convexconfig-default-export) | `@vllnt/convex-analytics/convex.config` | Pass to `app.use(...)` |
+| [`default` (component definition, `.js` path)](docs/client-sdk.md#convexconfigjs-default-export) | `@vllnt/convex-analytics/convex.config.js` | The same definition under a `.js` specifier |
+| [`ComponentApi`](docs/client-sdk.md#componentapi) | `@vllnt/convex-analytics/_generated/component.js` (type) | Type of `components.analytics` |
 | [`register`](docs/client-sdk.md#register) | `@vllnt/convex-analytics/test` | Mount the component and its child components in `convex-test` |
 | [`default` (test helpers)](docs/client-sdk.md#test-default-export) | `@vllnt/convex-analytics/test` | `{ register, schema, modules }` |
 | [`webDimensions`](docs/web-preset.md#webdimensions) | `@vllnt/convex-analytics/web` | The nine web prop keys to pass as `dimensions` |
@@ -183,6 +187,10 @@ export const solved = mutation({
   },
 });
 ```
+
+Compare platforms (web against mobile): add a `platform` prop to `dimensions` and read
+`top(ctx, name, "platform")` or a `where: { dim: "platform", val: "ios" }` filter, or give each
+platform its own `scope` ([multi-product](docs/multi-product.md)).
 
 Funnel, retention and a histogram of a numeric prop:
 
@@ -336,7 +344,12 @@ curl -H "x-api-key: $ANALYTICS_API_KEY" \
 ```
 
 Re-derive rollups after changing `dimensions` (`backfill` is internal to the component, so
-run it from the CLI; it handles one event name per call):
+run it from the CLI; it handles one event name per call).
+
+> [!WARNING]
+> `backfill` deletes every rollup row of that `(scope, name)` and rebuilds them only from raw
+> events still retained, so buckets older than `retentionDays` drop to 0. Run it only when the
+> retained raw events cover every bucket you still need.
 
 ```bash
 npx convex run --component analytics internal_mutations:backfill \
@@ -363,7 +376,7 @@ them as `400 { "error", "code" }`. Branch on `data.code`.
 | `backfill requires at most 50000 retained events; existing rollups were preserved` | `backfill` found more than 50,000 raw events for the name (plain `Error`) | Wait for `prune` to remove old events or lower `retentionDays`, then retry |
 | Convex argument validation error | An argument does not match the function validator, for example a nested `props` value or an unknown granularity | Match the types in [docs/client-sdk.md](docs/client-sdk.md) |
 | 401 `Missing x-api-key header` | REST request without `x-api-key` | Send the header |
-| 401 `API keys not configured` | No `apiKeys` config row for the request's `scope` | Store keys with `configSet` for that scope |
+| 401 `API keys not configured` | No `apiKeys` config row for the request's `scope`, or the stored value is `""` | Store keys with `configSet` for that scope |
 | 401 `Invalid API key` | The key is not in the scope's `apiKeys` list | Send a stored key or add it |
 | 500 `API keys misconfigured` | The stored `apiKeys` value is not a JSON array of strings | Store `JSON.stringify(["key"])` |
 | 400 `Invalid JSON body` | `POST /track` body is not JSON | Send a JSON body |
@@ -378,13 +391,19 @@ them as `400 { "error", "code" }`. Branch on `data.code`.
 
 ## Limits and gotchas
 
+- It serves the in-app counts your Convex functions read; it complements a data warehouse and
+  does not replace one. Questions on props not listed in `dimensions` (unless you `backfill`
+  while the raw events are retained), or on raw events older than `retentionDays`, need an
+  export of the raw events (for example by paging `list`) to your own store.
 - `track` returns `"dropped"` (no error) when sampled out, or when a `sessionRef` exceeds its
   rate limit: a token bucket per `(scope, sessionRef)` refilling 100 events per minute with
   capacity 10. The limit is fixed. Events without `sessionRef` skip the limiter.
 - Only keys listed in `dimensions` are rolled up; other props are stored on the raw event but
   cannot be read with `metric` / `top` / `timeseries`. Changing `dimensions` does not rewrite
-  past rollups: run `backfill`, which can only use raw events not yet pruned. Rollups are kept
-  forever; raw events (for `funnel`, `distribution`, `list`, `backfill`) only for `retentionDays`.
+  past rollups: run `backfill`, which can only use raw events not yet pruned. Raw events (for
+  `funnel`, `distribution`, `list`, `backfill`) are kept only for `retentionDays`. Rollups are
+  kept forever unless you run `backfill`: it deletes every rollup row of that name and rebuilds
+  them only from raw events still retained, so buckets older than `retentionDays` drop to 0.
 - Rollup values are strings: `true`, `1` and `null` become `"true"`, `"1"` and `"null"`, so
   `top` returns strings and `where: { dim, val: 1 }` also matches the string `"1"`.
 - `top`, and `metric` with a `range` or `where`, read only `day` rollups: if `granularities`
@@ -401,9 +420,11 @@ them as `400 { "error", "code" }`. Branch on `data.code`.
   `subjectRef`. Default range: the 30 days before `range.to` (or now).
 - `retention` reads at most 10,000 subjects and caps `periods` at 30. A subject counts only in
   the period of its last event, not in every period it returned.
-- `uniques` counts each subject once, at its last event: `wau` / `mau` are subjects last seen
-  within 7 / 30 days before `range.to`, `dau` is the mean of the `trend` buckets, and a subject
-  seen again after `range.to` is not counted. Default range: the 30 days before `range.to`.
+- `uniques` counts each subject once, at its last event, among subjects last seen inside
+  `range`: `wau` / `mau` are those last seen within 7 / 30 days before `range.to`, so a `range`
+  shorter than 30 days caps `mau` at the subjects in that range. `dau` is the rounded mean per
+  `granularity` bucket of the `trend` (per hour with `"hour"`), and a subject seen again after
+  `range.to` is not counted. Default range: the 30 days before `range.to`.
 - `distribution` reads at most 50,000 events, oldest first, then applies `where`; non-numeric
   measure values are ignored. Default `range.from` is 0.
 - `list` has no page-size cap (`numItems` is read as given); events that share the exact `ts`
@@ -420,11 +441,15 @@ them as `400 { "error", "code" }`. Branch on `data.code`.
   `/`). `GET /metric` ignores `dim` without `val` (and the reverse). `POST /track` ignores a
   `ts`, `subjectRef`, `sessionRef`, `dedupeKey` or `sampleRate` of the wrong type instead of
   rejecting it.
+- REST `scope`: a value that is not a string, or is `""`, silently becomes `"default"`, so the
+  request is checked against and writes to the `"default"` scope.
+- `POST /track` rejects invalid JSON and a non-object body with 400 before it checks the API
+  key; the other body checks run after the key check.
 - `@convex-dev/aggregate` is mounted as a child component but nothing writes or reads it.
-- Peer warnings: `@convex-dev/aggregate` pins `convex-helpers@0.1.128` (peer `convex ^1.46.0`)
-  and `@convex-dev/rate-limiter` pulls the latest `convex-helpers` (0.1.137: peer
-  `convex ^1.49.0`), so installs with `convex` below 1.49 warn although this package's peer is
-  `^1.45.0`.
+- Peer warnings: `@convex-dev/aggregate` 0.3.4 pins `convex-helpers@0.1.128` (peer
+  `convex ^1.46.0`), so `convex` 1.45 always warns although this package's peer is `^1.45.0`.
+  `@convex-dev/batch-worker` accepts a range of `convex-helpers` versions, and newer ones may ask
+  for a higher `convex` (`convex-helpers` 0.1.137 asks for `^1.49.0`).
 - Importing `@vllnt/convex-analytics/convex.config` in plain Node fails with
   `ERR_MODULE_NOT_FOUND` inside `@convex-dev/batch-worker`; the Convex CLI bundler loads it fine.
 - `@vllnt/convex-analytics/test` is TypeScript source that calls `import.meta.glob`: run it
@@ -433,7 +458,9 @@ them as `400 { "error", "code" }`. Branch on `data.code`.
 ## Compatibility
 
 - `convex`: peer `^1.45.0`, required. `convex` 1.45.0 itself requires Node 20 or later.
-- `react`: peer `>=18.0.0`, optional; only `@vllnt/convex-analytics/react` uses it.
+- `react`: peer `>=18.0.0`, optional; only `@vllnt/convex-analytics/react` imports React. A
+  transitive dependency (`@convex-dev/batch-worker` 0.3.3, via `@convex-dev/aggregate`) declares
+  `react` as a required peer, so package managers may install it in a backend-only app.
 - Node: `engines` is `>=18`.
 - ESM only; there is no CommonJS build.
 - The component's functions run in Convex's default runtime. `./web` helpers are pure

@@ -162,7 +162,7 @@ export interface TrackPageviewOpts {
   ts?: number;
   /** Override the client's default scope for this event. */
   scope?: string;
-  /** Skip if an event with this dedupe key already exists in the scope. */
+  /** Skip if a retained (not yet pruned) event with this key exists in the scope. */
   dedupeKey?: string;
 }
 

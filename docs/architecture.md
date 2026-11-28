@@ -50,7 +50,7 @@ Both run inside the component, are idempotent, and visit every scope in the `sco
 
 | Cron            | Schedule | What it does                                                                                    |
 | --------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `prune`         | 24 hours | Deletes raw events older than `retentionDays` per scope (rollups kept forever). |
+| `prune`         | 24 hours | Deletes raw events older than `retentionDays` per scope; it never touches rollups. |
 | `closeSessions` | 30 min   | Sets `endTs` (to the last event time) on sessions idle past `sessionIdleMs`.     |
 
 Each run handles at most 500 rows per scope and schedules itself again when it hit that cap; scopes
@@ -58,7 +58,9 @@ are visited 100 at a time. `retentionDays` and `sessionIdleMs` come from the `co
 (written by `configure`), else 90 days and 30 minutes.
 
 `backfill` is a non-cron internal mutation that deletes and re-derives a `(scope, name)`'s
-rollups from the retained raw events, for example after changing dimensions. It is not part
+rollups from the retained raw events, for example after changing dimensions. Rollups are kept
+forever unless you run `backfill`: it deletes every rollup row of that name and rebuilds them only
+from raw events still retained, so buckets older than `retentionDays` drop to 0. It is not part
 of the host-facing API; run it with
 `npx convex run --component analytics internal_mutations:backfill '{...}'`. It throws when more
 than 50,000 raw events exist for the name. It does not change the lifetime counter.

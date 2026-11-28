@@ -42,6 +42,11 @@ Ingest one event.
 | `sampleRate`    | No       | number   | `0..1`.                                             |
 | `scope`         | No       | string   | Partition. Default `"default"`.                     |
 
+A `scope` that is not a string, or is `""`, is read as `"default"` (not rejected), on every
+route. `POST /track` checks the body in this order: invalid JSON (`400 Invalid JSON body`) and a
+body that is not a JSON object (`400 Body must be a JSON object`) are rejected before the API
+key is checked; every other body check runs after it.
+
 `subjectRef`, `sessionRef`, `dedupeKey` (strings) and `ts`, `sampleRate` (numbers) are ignored,
 not rejected, when they have another type.
 
@@ -99,7 +104,8 @@ See [`uniques`](client-sdk.md#uniques) for how each number is computed.
 ## Auth & errors
 
 - Configure keys by writing a JSON string array to config `(scope, "apiKeys")` (the `apiKeys` config key).
-- Missing key, no `apiKeys` for the scope, or a key not in the list → `401 { "error": "..." }`.
+- Missing key, no `apiKeys` for the scope (or a stored `""`), or a key not in the list →
+  `401 { "error": "..." }`.
 - Invalid input returns `400`. Typed errors from the table below (for example a non-numeric
   `from`, `to`, or `limit`, nested or array `props` values, prop keys Convex cannot store)
   return `{ "error": "...", "code": "..." }`. Checks done in the route itself return

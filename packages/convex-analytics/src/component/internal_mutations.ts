@@ -36,7 +36,7 @@ async function readNumber(
 
 const SCOPE_BATCH = 100;
 
-/** Delete raw events past `retentionDays` for a scope. Rollups are kept forever. Idempotent. */
+/** Delete raw events past `retentionDays` for a scope. Never deletes rollups (only `backfill` does). Idempotent. */
 export const prune = internalMutation({
   args: { scope: v.optional(v.string()), afterScope: v.optional(v.string()) },
   returns: v.object({ deleted: v.number() }),

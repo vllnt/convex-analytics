@@ -30,10 +30,10 @@ export const pageview = mutation({
   },
 });
 
-export const byCountry = query({
+export const byDevice = query({
   args: {},
   returns: v.array(v.object({ value: v.string(), count: v.number() })),
-  handler: async (ctx) => await analytics.top(ctx, "page_view", "country"),
+  handler: async (ctx) => await analytics.top(ctx, "page_view", "device"),
 });
 ```
 
@@ -97,10 +97,11 @@ interface GeoInfo { country: string; region?: string; city?: string }
 
 ```ts
 // signature
-trackPageview(client: AnalyticsClient, ctx, opts: TrackPageviewOpts): Promise<unknown>
+trackPageview(client: { track(ctx, name, opts): Promise<unknown> }, ctx, opts: TrackPageviewOpts): Promise<unknown>
 ```
 
-Builds props and calls `client.track(ctx, "page_view", { props, ... })`, returning its result.
+`client` is usually an `AnalyticsClient`, but any object with a matching `track(ctx, name, opts)`
+method works. Builds props and calls `client.track(ctx, "page_view", { props, ... })`, returning its result.
 Props written: `path`; `referrer` when given; `device` / `browser` / `os` when `ua` is given;
 `country` (and `region` / `city` when present) when `headers` is given; `utmSource` /
 `utmMedium` / `utmCampaign` from `utm`. `region` and `city` are not in `webDimensions`, so they

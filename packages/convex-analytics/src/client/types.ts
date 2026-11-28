@@ -22,7 +22,11 @@ export interface AnalyticsConfig {
   dimensions?: string[];
   /** Rollup bucket granularities. Default `["day"]`. */
   granularities?: Granularity[];
-  /** Raw-event TTL in days (rollups kept forever). Default `90`. Applied only through `configure`. */
+  /**
+   * Raw-event TTL in days. Default `90`. Applied only through `configure`. Rollups are kept forever
+   * unless you run `backfill`: it rebuilds them only from retained raw events, so buckets older
+   * than `retentionDays` drop to 0.
+   */
   retentionDays?: number;
   /** Sampling rate `0..1`. Default `1`. */
   sampleRate?: number;

@@ -90,7 +90,9 @@ The component never reads host or sibling tables. Host data enters only as opaqu
 - **Optional `./react` layer.** Hooks wrap `convex/react`'s `useQuery` over the host's
   re-exported aggregate query refs (`metric`, `top`, `timeseries`, `uniques`) — typed for
   aggregate results only; access control and `scope` belong to the host query. `react` is an optional peer dep (`convex` is
-  required); backend-only consumers pull zero React. Render-tested and coverage-included at 100%.
+  required) and only `./react` imports it. Backend-only consumers can still get React installed:
+  `@convex-dev/aggregate` 0.3.4 depends on `@convex-dev/batch-worker` 0.3.3, which declares
+  `react` as a required peer, so package managers may install it. Render-tested and coverage-included at 100%.
 - **Auth-agnostic.** No auth library assumed. The host resolves identity, gates access, and
   passes opaque refs in. REST routes gate on an `x-api-key` matching the host-configured
   `apiKeys` config row (the loop does not stop at the first differing character).
@@ -142,10 +144,15 @@ The package build copies `README.md`, `LICENSE`, `llms.txt` and `docs/` into
 tarball and checks the required files, the excluded internal files, and every relative link.
 Add a new user page to `files` and to `REQUIRED` in `scripts/test-package.mjs`.
 `test:package` also runs `scripts/check-documentation.mjs` on the installed docs: README
-sections and order, the API table against every export, the errors table against every code
-and message in `src/`, the caps in Limits and gotchas, the Links block, footer and llms.txt
-Ecosystem block, and it type-checks every README/docs `ts`/`tsx` example (a block starts with
-`// <path>.ts`, or `// signature` for a non-compiled reference block in `docs/`).
+sections and order; the API table both ways (every export of every `exports` key except
+`./package.json`, `.js` keys included, has a row, a TSDoc summary and a `docs/` heading, and
+every row names an export of the entry points in its second cell, a public `AnalyticsClient`
+method, or a `components.<name>.<file>` function of `ComponentApi`); the errors table against
+every code and message in `src/`; each hard cap in `src/` (keyed by its enclosing export or
+constant) stated by its exact `CAP_PHRASES` phrase in Limits and gotchas, with unknown and stale
+entries failing; the Links block, footer and llms.txt Ecosystem block; and it type-checks every
+README/docs `ts`/`tsx` example (a block starts with `// <path>.ts`, or `// signature` for a
+non-compiled reference block in `docs/`).
 
 ## Generated code
 

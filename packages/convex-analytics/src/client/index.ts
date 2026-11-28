@@ -176,8 +176,9 @@ export class AnalyticsClient<TProps extends Props = Props> {
   }
 
   /**
-   * Distinct-subject counts from each subject's last-seen time: `wau` / `mau` count subjects last
-   * seen within 7 / 30 days before `range.to`; `dau` is the mean of the `trend` buckets.
+   * Distinct-subject counts from each subject's last-seen time, among subjects last seen inside
+   * `range`: `wau` / `mau` count those last seen within 7 / 30 days before `range.to`; `dau` is the
+   * rounded mean of the `trend` buckets, one per `granularity` bucket (per hour with `"hour"`).
    */
   async uniques(
     ctx: QueryCtx,
