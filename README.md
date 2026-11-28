@@ -422,8 +422,9 @@ them as `400 { "error", "code" }`. Branch on `data.code`.
   the period of its last event, not in every period it returned.
 - `uniques` counts each subject once, at its last event, among subjects last seen inside
   `range`: `wau` / `mau` are those last seen within 7 / 30 days before `range.to`, so a `range`
-  shorter than 30 days caps `mau` at the subjects in that range. `dau` is the rounded mean per
-  `granularity` bucket of the `trend` (per hour with `"hour"`), and a subject seen again after
+  shorter than 30 days caps `mau` at the subjects in that range. `dau` is the rounded mean of the
+  `trend`, which has one entry per `granularity` bucket that has a subject (empty buckets are left
+  out of both; per hour with `"hour"`), and a subject seen again after
   `range.to` is not counted. Default range: the 30 days before `range.to`.
 - `distribution` reads at most 50,000 events, oldest first, then applies `where`; non-numeric
   measure values are ignored. Default `range.from` is 0.
@@ -463,8 +464,8 @@ them as `400 { "error", "code" }`. Branch on `data.code`.
   `react` as a required peer, so package managers may install it in a backend-only app.
 - Node: `engines` is `>=18`.
 - ESM only; there is no CommonJS build.
-- The component's functions run in Convex's default runtime. `./web` helpers are pure
-  functions with no dependencies. `./react` hooks need a `ConvexProvider`.
+- The component's functions run in Convex's default runtime. `./web` helpers are plain
+  host-side functions with no dependencies. `./react` hooks need a `ConvexProvider`.
 - CI type-checks the README and docs examples against `convex` 1.45.0.
 
 ## Testing
