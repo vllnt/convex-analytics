@@ -1,69 +1,80 @@
-# Multi-Product Scoping
+# Multi-product scoping
 
-Every table, mutation, and query is partitioned by a single opaque `scope` string. Use it to
-isolate products, environments, tenants, or platforms — whatever partition your host needs.
+Every table, mutation and query is partitioned by one opaque `scope` string. Use it to keep
+products, environments or tenants apart.
 
 | Concept   | Field   | Default     |
 | --------- | ------- | ----------- |
 | Partition | `scope` | `"default"` |
 
-## How scoping works
+## Default scope and per-call override
 
-### Set a default scope on the client
+Set a default on the client; every method also takes `scope` in its options.
 
 ```ts
+// convex/tenants.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
+import { components } from "./_generated/api";
+import { mutation, query } from "./_generated/server";
+
 const analytics = new AnalyticsClient(components.analytics, {
   scope: "my-saas",
   dimensions: ["plan"],
 });
-```
 
-### Override per call
-
-```ts
-await analytics.track(ctx, "signup", {
-  subjectRef: userId,
-  scope: "customer-a",
+export const featureUsed = mutation({
+  args: { tenantId: v.string(), userId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { tenantId, userId }) => {
+    await analytics.track(ctx, "feature_used", { subjectRef: userId, scope: tenantId });
+    return null;
+  },
 });
-const total = await analytics.metric(ctx, "signup", { scope: "customer-a" });
-```
 
-Every read takes the same `scope` option; omit it to fall back to the client's default.
+export const featureUses = query({
+  args: { tenantId: v.string() },
+  returns: v.number(),
+  handler: async (ctx, { tenantId }) =>
+    await analytics.metric(ctx, "feature_used", { scope: tenantId }),
+});
+```
 
 ## What scope isolates
 
-- `events`, `rollups`, `subjects`, `sessions`, `scopes`, and `config` rows are keyed by `scope`.
-- All indexes lead with `scope`, so reads never span partitions.
-- The sharded counter is keyed by `(scope, name)`, so totals are per-scope.
-- `configure` persists retention/sampling/idle per scope.
+- `events`, `rollups`, `subjects`, `sessions`, `scopes` and `config` rows carry `scope`, and
+  every index starts with it, so a read for one scope never returns another scope's rows.
+- The lifetime counter is keyed by `(scope, name)`.
+- `configure` stores `retentionDays` and `sessionIdleMs` per scope, and REST `apiKeys` are
+  stored per scope.
+- The crons visit every scope that has tracked an event or has config (the `scopes` table).
 
-## Patterns
+The component does not check who may read a scope: your functions decide which `scope` a
+caller may pass.
 
-**Per-tenant SaaS** — one `scope` per customer:
+## Mounting twice instead of scoping
 
-```ts
-await analytics.track(ctx, "feature_used", {
-  subjectRef: userId,
-  scope: "customer-a",
-});
-const used = await analytics.metric(ctx, "feature_used", {
-  scope: "customer-a",
-});
-```
-
-**Environment split** — separate staging from production:
+For a fixed set of partitions known at deploy time, you can mount the component more than once.
+Each mount has its own tables and crons. Use `scope` when partitions are created at runtime
+(a new tenant).
 
 ```ts
-const scope = process.env.CONVEX_ENV === "production" ? "prod" : "staging";
-await analytics.track(ctx, "signup", { scope });
+// convex/convex.config.ts
+import analytics from "@vllnt/convex-analytics/convex.config";
+import { defineApp } from "convex/server";
+
+const app = defineApp();
+app.use(analytics);
+app.use(analytics, { name: "mobileAnalytics" });
+export default app;
 ```
 
-**Platform split** — compare web vs mobile by scope, or keep one scope and break down on a
-`platform` prop dimension instead.
+```ts
+// convex/mobile.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
 
-## Mounting vs scope
+import { components } from "./_generated/api";
 
-For a **static** set of partitions (web + mobile + file analytics), you can also mount the
-component multiple times (`app.use(analytics, { name })`) — each mount is fully sandboxed.
-Reach for `scope` when partitions are **runtime-created** (a new tenant you can't declare at
-deploy time).
+export const mobileAnalytics = new AnalyticsClient(components.mobileAnalytics);
+```

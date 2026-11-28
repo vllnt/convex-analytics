@@ -52,9 +52,9 @@ The component never reads host or sibling tables. Host data enters only as opaqu
 ## Key design decisions
 
 - **Four generic seams.** (1) Free-string `name` — any event. (2) Opaque `subjectRef` /
-  `sessionRef` — never assumed to be a user/session of any shape. (3) Host-supplied props
-  validator — the client is `AnalyticsClient<TProps>`; the runtime default is a typed
-  `v.record(v.string(), scalar)`, never `v.any()`; a host may pass a stricter `propsValidator`.
+  `sessionRef` — never assumed to be a user/session of any shape. (3) Host-typed props — the
+  client is `AnalyticsClient<TProps>` (compile-time only); the runtime validator is a typed
+  `v.record(v.string(), scalar)`, never `v.any()`. There is no `propsValidator` option.
   (4) Host-declared `dimensions` — the `string[]` of prop keys to roll up on, not a fixed
   web-field set.
 - **Entity/instance identity is the host's, kept opaque.** The component owns no host id. An
@@ -65,7 +65,9 @@ The component never reads host or sibling tables. Host data enters only as opaqu
 - **Rollup-on-write, not a rollup cron.** `track` increments the `(scope, name, gran, bucket,
   dim, val)` rollup rows (a total row + one per declared dimension present in `props`) as the
   event lands across `minute`/`hour`/`day` buckets (minute opt-in for live windows). `metric` /
-  `top` / `timeseries` read the pre-aggregated rows in O(1); there is no 5-minute rollup lag.
+  `top` / `timeseries` read the pre-aggregated rows (cost grows with matching buckets and
+  values; only the unfiltered lifetime `metric` is a fixed-shard counter read); there is no
+  rollup lag.
   `backfill` re-derives rollups from raw events when dimensions change. `funnel` /
   `distribution` are computed from raw events at query time (index-backed, bounded) and
   `retention` from `subjects` first/last-seen rows — the
@@ -76,22 +78,24 @@ The component never reads host or sibling tables. Host data enters only as opaqu
   helpers in `@vllnt/convex-analytics/web`; a host opts in by passing `webDimensions` to
   `dimensions`. Segment-style `identify`/`alias` were dropped from the core.
 - **Config is applied, not ignored.** The earlier draft documented config the code ignored.
-  Now `dimensions` / `granularities` / `sampleRate` ride into each `track` call, and the
-  cron-relevant values (`retentionDays`, `sampleRate`, `sessionIdleMs`) are persisted to the
-  `config` table via `configure` so the in-component crons read them. All defaults work with
+  Now `dimensions` / `granularities` / `sampleRate` ride into each `track` call, and
+  `retentionDays` / `sessionIdleMs` are persisted to the `config` table via `configure` so the
+  in-component crons read them (`configure` also stores `sampleRate`, which nothing reads). All defaults work with
   zero config.
 - **Opaque `scope` partition.** Every table, index, mutation, and query leads with `scope` so
   non-scoped reads never span partitions. Default `"default"`; overridable per call. For a
   static set of partitions, multi-mount (`app.use(analytics, { name })`) is also supported.
 - **Zero `v.any()`.** `props` is a typed `record<string, scalar>` end to end; host typing is
-  via the `TProps` generic + optional host `propsValidator`.
+  via the `TProps` generic.
 - **Optional `./react` layer.** Hooks wrap `convex/react`'s `useQuery` over the host's
-  re-exported aggregate query refs (`metric`, `top`, `timeseries`, `uniques`) — aggregates
-  only, scope-gated, no raw events on the client. `react` is an optional peer dep (`convex` is
-  required); backend-only consumers pull zero React. Render-tested and coverage-included at 100%.
+  re-exported aggregate query refs (`metric`, `top`, `timeseries`, `uniques`) — typed for
+  aggregate results only; access control and `scope` belong to the host query. `react` is an optional peer dep (`convex` is
+  required) and only `./react` imports it. Backend-only consumers can still get React installed:
+  `@convex-dev/aggregate` 0.3.4 depends on `@convex-dev/batch-worker` 0.3.3, which declares
+  `react` as a required peer, so package managers may install it. Render-tested and coverage-included at 100%.
 - **Auth-agnostic.** No auth library assumed. The host resolves identity, gates access, and
   passes opaque refs in. REST routes gate on an `x-api-key` matching the host-configured
-  `apiKeys` config row, compared timing-safe.
+  `apiKeys` config row (the loop does not stop at the first differing character).
 
 ## Conventions
 
@@ -115,11 +119,12 @@ pnpm lint           # lint all packages
 
 | Doc | Owns |
 |-----|------|
-| `README.md` | Value prop, features, generic-core-vs-web split, install, usage, config, API summary, web/react, security, testing |
-| `docs/client-sdk.md` | Full `AnalyticsClient<TProps>` config + verb reference + types |
+| `README.md` | Fixed agent-first sections (checked by `scripts/check-documentation.mjs`): when to use, install, quick start, API table, common tasks, errors and fixes, limits, compatibility, testing, security, links |
+| `docs/client-sdk.md` | Full `AnalyticsClient<TProps>` config + verb reference + types, `./convex.config`, `./test` |
 | `docs/schema.md` | The six sandboxed tables + indexes |
 | `docs/api-reference.md` | The five generic REST routes |
-| `docs/web-preset.md` | Opt-in web dimensions + UA/geo helpers + React note |
+| `docs/web-preset.md` | Opt-in web dimensions + UA/geo helpers |
+| `docs/react.md` | `./react` hooks reference |
 | `docs/multi-product.md` | The opaque `scope` partition |
 | `docs/architecture.md` | Rollup-on-write, child components, crons |
 | `docs/quick-start.md` | Install → mount → track → read walkthrough |
@@ -138,6 +143,16 @@ The package build copies `README.md`, `LICENSE`, `llms.txt` and `docs/` into
 @vllnt/convex-analytics test:package` (after `pnpm build`, run in CI) installs the packed
 tarball and checks the required files, the excluded internal files, and every relative link.
 Add a new user page to `files` and to `REQUIRED` in `scripts/test-package.mjs`.
+`test:package` also runs `scripts/check-documentation.mjs` on the installed docs: README
+sections and order; the API table both ways (every export of every `exports` key except
+`./package.json`, `.js` keys included, has a row, a TSDoc summary and a `docs/` heading, and
+every row names an export of the entry points in its second cell, a public `AnalyticsClient`
+method, or a `components.<name>.<file>` function of `ComponentApi`); the errors table against
+every code and message in `src/`; each hard cap in `src/` (keyed by its enclosing export or
+constant) stated by its exact `CAP_PHRASES` phrase in Limits and gotchas, with unknown and stale
+entries failing; the Links block, footer and llms.txt Ecosystem block; and it type-checks every
+README/docs `ts`/`tsx` example (a block starts with `// <path>.ts`, or `// signature` for a
+non-compiled reference block in `docs/`).
 
 ## Generated code
 

@@ -14,7 +14,7 @@ export interface Where {
   val: Scalar;
 }
 
-/** Client-owned config. Stored on the client and applied to every call. */
+/** `AnalyticsClient` constructor options. All optional. */
 export interface AnalyticsConfig {
   /** Multi-tenant partition. Default `"default"`. */
   scope?: string;
@@ -22,11 +22,15 @@ export interface AnalyticsConfig {
   dimensions?: string[];
   /** Rollup bucket granularities. Default `["day"]`. */
   granularities?: Granularity[];
-  /** Raw-event TTL in days (rollups kept forever). Default `90`. */
+  /**
+   * Raw-event TTL in days. Default `90`. Applied only through `configure`. Rollups are kept forever
+   * unless you run `backfill`: it rebuilds them only from retained raw events, so buckets older
+   * than `retentionDays` drop to 0.
+   */
   retentionDays?: number;
   /** Sampling rate `0..1`. Default `1`. */
   sampleRate?: number;
-  /** Session idle-close timeout in millis. Default `1800000` (30m). */
+  /** Session idle-close timeout in millis. Default `1800000` (30m). Applied only through `configure`. */
   sessionIdleMs?: number;
 }
 
@@ -38,7 +42,7 @@ export interface TrackOpts<TProps extends Props = Props> {
   ts?: number;
   /** Override the client's default scope for this event. */
   scope?: string;
-  /** Skip if an event with this dedupe key already exists in the scope. */
+  /** Skip if a retained (not yet pruned) event with this key exists in the scope. */
   dedupeKey?: string;
 }
 
@@ -57,7 +61,7 @@ export interface TimeseriesPoint {
   count: number;
 }
 
-/** DAU/WAU/MAU rollup. */
+/** Distinct-subject counts returned by `uniques`. */
 export interface UniquesView {
   dau: number;
   wau: number;

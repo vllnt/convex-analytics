@@ -6,7 +6,7 @@
 fixed-shard counter; ranged/filtered metrics, top values, and time series scan matching rollup
 rows. They avoid raw-event scans but are not generally O(1).
 
-```
+```text
 track(ctx, name, opts)
   |
   +- 1. Rate limit (when sessionRef set: per-session token bucket) -> "dropped" if over
@@ -38,18 +38,11 @@ unbounded total) — `metric`, `top`, and `timeseries` never scan raw events. `f
 
 | Component      | Package                       | Role                                               |
 | -------------- | ----------------------------- | -------------------------------------------------- |
-| aggregate      | `@convex-dev/aggregate`       | Mounted for compatibility; not written or read.    |
+| aggregate      | `@convex-dev/aggregate`       | Mounted; not written or read. |
 | shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `(scope, name)` (16 shards).        |
 | rateLimiter    | `@convex-dev/rate-limiter`    | Per-`sessionRef` token bucket (100/min, burst 10). |
 
-Mounted in `convex.config.ts`:
-
-```ts
-const component = defineComponent("analytics");
-component.use(aggregate);
-component.use(shardedCounter);
-component.use(rateLimiter);
-```
+All three are mounted in `src/component/convex.config.ts` with `component.use(...)`.
 
 ## Crons
 
@@ -57,11 +50,20 @@ Both run inside the component, are idempotent, and visit every scope in the `sco
 
 | Cron            | Schedule | What it does                                                                                    |
 | --------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `prune`         | 24 hours | Deletes raw events older than `retentionDays` per scope (rollups kept forever). Capped per run. |
-| `closeSessions` | 30 min   | Sets `endTs` on sessions idle past `sessionIdleMs`.                                             |
+| `prune`         | 24 hours | Deletes raw events older than `retentionDays` per scope; it never touches rollups. |
+| `closeSessions` | 30 min   | Sets `endTs` (to the last event time) on sessions idle past `sessionIdleMs`.     |
 
-`backfill` is a non-cron internal mutation that re-derives a `(scope, name)`'s rollups from
-the retained raw events — useful after changing dimensions.
+Each run handles at most 500 rows per scope and schedules itself again when it hit that cap; scopes
+are visited 100 at a time. `retentionDays` and `sessionIdleMs` come from the `config` table
+(written by `configure`), else 90 days and 30 minutes.
+
+`backfill` is a non-cron internal mutation that deletes and re-derives a `(scope, name)`'s
+rollups from the retained raw events, for example after changing dimensions. Rollups are kept
+forever unless you run `backfill`: it deletes every rollup row of that name and rebuilds them only
+from raw events still retained, so buckets older than `retentionDays` drop to 0. It is not part
+of the host-facing API; run it with
+`npx convex run --component analytics internal_mutations:backfill '{...}'`. It throws when more
+than 50,000 raw events exist for the name. It does not change the lifetime counter.
 
 ## Isolation
 

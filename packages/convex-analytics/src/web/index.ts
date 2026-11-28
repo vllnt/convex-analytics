@@ -162,7 +162,7 @@ export interface TrackPageviewOpts {
   ts?: number;
   /** Override the client's default scope for this event. */
   scope?: string;
-  /** Skip if an event with this dedupe key already exists in the scope. */
+  /** Skip if a retained (not yet pruned) event with this key exists in the scope. */
   dedupeKey?: string;
 }
 
@@ -171,7 +171,8 @@ export interface TrackPageviewOpts {
  * `"page_view"` event through the generic `AnalyticsClient`.
  *
  * Host-side convenience: the component never sees web concepts — this helper
- * just assembles the `{@link webDimensions}`-shaped props and calls
+ * just assembles the {@link webDimensions}-shaped props (plus `region` / `city`,
+ * which are stored but not in {@link webDimensions}) and calls
  * `client.track(ctx, "page_view", { props })`. Pair with
  * `dimensions: [...webDimensions]` on the client to get web rollups.
  *

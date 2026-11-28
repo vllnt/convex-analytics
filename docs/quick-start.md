@@ -1,6 +1,6 @@
-# Quick Start
+# Quick start
 
-Get generic analytics running in your Convex app in a few minutes.
+Install, mount, track and read events in a Convex app.
 
 ## 1. Install
 
@@ -9,107 +9,104 @@ npm install @vllnt/convex-analytics
 # or: pnpm add @vllnt/convex-analytics
 ```
 
+`convex` (`^1.45.0`) is a required peer dependency.
+
 ## 2. Mount the component
 
-In your `convex/convex.config.ts`:
-
 ```ts
-import { defineApp } from "convex/server";
+// convex/convex.config.ts
 import analytics from "@vllnt/convex-analytics/convex.config";
+import { defineApp } from "convex/server";
 
 const app = defineApp();
 app.use(analytics);
 export default app;
 ```
 
-## 3. Create a client
+Run `npx convex dev` to generate `components.analytics`.
+
+## 3. Track and read
 
 ```ts
+// convex/signups.ts
 import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
 import { components } from "./_generated/api";
+import { mutation, query } from "./_generated/server";
 
-type MyProps = { plan?: string; country?: string };
+type SignupProps = { plan?: string; country?: string };
 
-const analytics = new AnalyticsClient<MyProps>(components.analytics, {
-  dimensions: ["plan", "country"], // host-declared rollup keys
-  granularities: ["day"],
+const analytics = new AnalyticsClient<SignupProps>(components.analytics, {
+  dimensions: ["plan", "country"], // props keys to roll up on
+});
+
+export const signup = mutation({
+  args: { userId: v.string(), plan: v.string(), country: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { userId, plan, country }) => {
+    await analytics.track(ctx, "signup", { subjectRef: userId, props: { plan, country } });
+    return null;
+  },
+});
+
+export const summary = query({
+  args: { from: v.number(), to: v.number() },
+  returns: v.object({
+    total: v.number(),
+    byPlan: v.array(v.object({ value: v.string(), count: v.number() })),
+    daily: v.array(v.object({ bucket: v.number(), count: v.number() })),
+  }),
+  handler: async (ctx, { from, to }) => ({
+    total: await analytics.metric(ctx, "signup"),
+    byPlan: await analytics.top(ctx, "signup", "plan"),
+    daily: await analytics.timeseries(ctx, "signup", { granularity: "day", range: { from, to } }),
+  }),
 });
 ```
 
-`TProps` types the `props` you pass to `track`. See [Client SDK](./client-sdk.md) for the
-full config and verb reference.
+Event names are free strings; `subjectRef` and `sessionRef` are opaque to the component. See
+[Client SDK](./client-sdk.md) for every option and method.
 
-## 4. Track your first event
+## 4. (Optional) REST access
 
-Inside a Convex mutation:
-
-```ts
-await analytics.track(ctx, "signup", {
-  subjectRef: userId,
-  props: { plan: "pro", country: "FR" },
-});
-```
-
-Event names are free strings; `subjectRef` / `sessionRef` are opaque to the component.
-
-## 5. Read
+Mount with `app.use(analytics, { httpPrefix: "/analytics" })` and deploy; without
+`httpPrefix` the component's HTTP routes are not exposed. Store API keys from an internal
+mutation (the client has no `configSet` method, so call the component mutation):
 
 ```ts
-const total = await analytics.metric(ctx, "signup");
-const byPlan = await analytics.top(ctx, "signup", "plan");
-const trend = await analytics.timeseries(ctx, "signup", {
-  granularity: "day",
-  range: { from: Date.now() - 30 * 86_400_000, to: Date.now() },
-});
-```
+// convex/admin.ts
+import { v } from "convex/values";
 
-## 6. (Optional) REST access
+import { components } from "./_generated/api";
+import { internalMutation } from "./_generated/server";
 
-First change the mount to `app.use(analytics, { httpPrefix: "/analytics" })` and deploy.
-Without `httpPrefix`, the component's HTTP routes are not exposed.
-Configure API keys from a trusted internal/admin-only mutation, then call the REST surface:
-
-```ts
-// The client has no configSet method: use the component mutation.
-await ctx.runMutation(components.analytics.mutations.configSet, {
-  scope: "default",
-  key: "apiKeys",
-  value: JSON.stringify(["your-key"]),
+export const setApiKey = internalMutation({
+  args: { key: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { key }) => {
+    await ctx.runMutation(components.analytics.mutations.configSet, {
+      scope: "default",
+      key: "apiKeys",
+      value: JSON.stringify([key]),
+    });
+    return null;
+  },
 });
 ```
 
 ```bash
+npx convex run admin:setApiKey '{"key":"your-key"}'
 curl -H "x-api-key: your-key" \
-  "https://your-deployment.convex.site/analytics/metric?name=signup"
+  "https://<deployment>.convex.site/analytics/metric?name=signup"
 ```
 
 See the [REST API](./api-reference.md) for all five routes.
 
-## 7. (Optional) Web preset
+## 5. Next steps
 
-```ts
-import { webDimensions, trackPageview } from "@vllnt/convex-analytics/web";
-
-const web = new AnalyticsClient(components.analytics, {
-  dimensions: [...webDimensions],
-});
-await trackPageview(web, ctx, { path: "/pricing", headers: request.headers });
-```
-
-See [Web Preset](./web-preset.md).
-
-## 8. Testing
-
-```ts
-import analyticsTest from "@vllnt/convex-analytics/test";
-import { convexTest } from "convex-test";
-
-const t = convexTest(hostSchema, hostModules);
-analyticsTest.register(t);
-```
-
-## Next steps
-
-- [Client SDK](./client-sdk.md) — full config + verb reference
-- [Schema](./schema.md) — the six sandboxed tables
-- [Web Preset](./web-preset.md) — opt-in web dimensions + helpers
+- [Client SDK](./client-sdk.md): config, methods, types, test helper
+- [Web preset](./web-preset.md): web dimensions, user-agent and geo helpers
+- [React hooks](./react.md): reactive aggregate reads
+- [Schema](./schema.md): the six component tables
+- [Errors and fixes](../README.md#errors-and-fixes)

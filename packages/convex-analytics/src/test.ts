@@ -12,7 +12,8 @@ const modules = import.meta.glob("./component/**/*.ts");
  * Register the convex-analytics component (and its child components) with a
  * convex-test instance. Child components are registered under nested paths
  * (`<name>/aggregate`, `<name>/shardedCounter`, `<name>/rateLimiter`) so that
- * `track`'s aggregate/counter/rate-limiter calls resolve end-to-end.
+ * `track`'s sharded-counter and rate-limiter calls resolve end-to-end. The aggregate child is
+ * mounted by the component, so it is registered too, though nothing calls it.
  *
  * @example
  * ```ts
@@ -41,4 +42,5 @@ export function register(
   );
 }
 
+/** `register`, plus the component `schema` and `modules` for calling `t.registerComponent` yourself. */
 export default { register, schema, modules };
