@@ -143,6 +143,12 @@ The package build copies `README.md`, `LICENSE`, `llms.txt` and `docs/` into
 @vllnt/convex-analytics test:package` (after `pnpm build`, run in CI) installs the packed
 tarball and checks the required files, the excluded internal files, and every relative link.
 Add a new user page to `files` and to `REQUIRED` in `scripts/test-package.mjs`.
+It also imports every `exports` entry with plain Node (except the commented
+`TYPE_CHECK_ONLY` entries) and type-checks a strict `nodenext` consumer importing from every
+entry; a new export needs a row in `ENTRY_IMPORTS`. The publish `quality` job runs it before
+both channels. `pnpm lint` also runs `scripts/test-check-package-contents.sh`, and
+`pnpm typecheck` / `typecheck:ci` also check `tests/` and `vitest.config.ts`
+(`tsconfig.test.json`; the build still compiles only `src`).
 `test:package` also runs `scripts/check-documentation.mjs` on the installed docs: README
 sections and order; the API table both ways (every export of every `exports` key except
 `./package.json`, `.js` keys included, has a row, a TSDoc summary and a `docs/` heading, and
