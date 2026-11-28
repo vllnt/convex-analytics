@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.1] - Unreleased
+## [0.2.0] - Unreleased
+
+This release changes behaviour for invalid input: calls that `0.1.0` accepted with `NaN` or
+infinite numbers, empty strings, non-scalar props or out-of-range limits now throw typed
+`ConvexError` codes (see **Fixed**), and the REST routes answer them with `400`. Hosts that
+passed such input must handle these errors before upgrading from `^0.1.0`.
 
 ### Added
 
@@ -41,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dependency, so a host on `convex` 1.45 to 1.47 no longer gets a second, nested `convex` copy.
 - Export `./convex.config.js` (same target as `./convex.config`), which the Convex Components
   Directory preflight requires alongside `./_generated/component.js`.
+- The package build's turbo cache now covers the docs it copies from the repo root, so a build
+  can no longer ship stale or missing `README.md`, `LICENSE`, `llms.txt` or `docs/` after a root
+  doc change or a cache hit. `pnpm lint` checks this with a turbo dry run.
 
 ### Changed
 
