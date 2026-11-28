@@ -3,6 +3,9 @@
  * consumer gets under node_modules/@vllnt/convex-analytics/: the required docs and
  * entry points are present, contributor and internal files are absent, and every
  * relative link in llms.txt, README.md and docs/*.md resolves inside the installed package.
+ * Then it runs the documentation contract (check-documentation.mjs) on the installed docs and
+ * type-checks every README and docs example against the installed package and the lowest
+ * supported `convex`.
  *
  * Run after `pnpm build` (the build copies README, LICENSE, llms.txt and docs/ in).
  */
@@ -11,6 +14,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { checkDocumentation, compileExamples } from "./check-documentation.mjs";
 
 const REQUIRED = [
   "package.json",
@@ -23,6 +28,7 @@ const REQUIRED = [
   "docs/schema.md",
   "docs/api-reference.md",
   "docs/web-preset.md",
+  "docs/react.md",
   "docs/multi-product.md",
   "docs/architecture.md",
   "dist/client/index.js",
@@ -37,6 +43,15 @@ const FORBIDDEN = [
   "docs/REBUILD.md",
   "tests",
   "specs",
+];
+/** Installed next to the tarball so the doc examples compile; convex is the lowest supported peer. */
+const EXAMPLE_DEPENDENCIES = [
+  "convex@1.45.0",
+  "convex-test@0.0.73",
+  "vite@8.3.8",
+  "vitest@5.1.1",
+  "react@19.3.1",
+  "@types/react@19.3.0",
 ];
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 const REPO_BLOB = /^https:\/\/github\.com\/vllnt\/convex-analytics\/blob\/[^/]+\/(.+)$/;
@@ -83,7 +98,7 @@ try {
   writeFileSync(join(temporary, "package.json"), JSON.stringify({ private: true, type: "module" }));
   execFileSync(
     "npm",
-    ["install", tarball, "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund", "--loglevel=error"],
+    ["install", tarball, ...EXAMPLE_DEPENDENCIES, "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund", "--loglevel=error"],
     { cwd: temporary, stdio: "inherit" },
   );
 
@@ -101,6 +116,9 @@ try {
   for (const file of ["llms.txt", "README.md", ...docs.map((name) => `docs/${name}`)]) {
     if (existsSync(join(installed, file))) checkLinks(installed, file);
   }
+  const documentation = checkDocumentation(installed, temporary);
+  failures.push(...documentation.failures);
+  failures.push(...compileExamples(installed, temporary, documentation.examples));
 } finally {
   rmSync(temporary, { force: true, recursive: true });
 }
@@ -110,3 +128,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(`OK    package contents: ${REQUIRED.length} required files, links resolve`);
+console.log("OK    documentation contract and examples type-check");
