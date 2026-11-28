@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { convexTest } from "convex-test";
+import { convexTest, type TestConvex } from "convex-test";
 import aggregateTest from "@convex-dev/aggregate/test";
 import shardedCounterTest from "@convex-dev/sharded-counter/test";
 import rateLimiterTest from "@convex-dev/rate-limiter/test";
@@ -15,7 +15,7 @@ const modules = import.meta.glob("../src/component/**/*.ts");
  * The component schema is the test root, so children resolve at root-relative
  * paths (`aggregate`, `shardedCounter`, `rateLimiter`).
  */
-export function initConvexTest(): ReturnType<typeof convexTest> {
+export function initConvexTest(): TestConvex<typeof schema> {
   const t = convexTest(schema, modules);
   t.registerComponent("aggregate", aggregateTest.schema, aggregateTest.modules);
   t.registerComponent(
