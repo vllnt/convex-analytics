@@ -35,6 +35,8 @@ const OSS = "https://oss.vllnt.com";
 const PATH_COMMENT = /^\/\/ (\S+\.tsx?)\n/u;
 const SIGNATURE = /^\/\/ signature\n/u;
 const COMPILED = new Set(["ts", "tsx"]);
+/** The retired vllnt domain, built from parts so this file does not contain it. */
+const RETIRED_DOMAIN = new RegExp(["vllnt", "ai"].join(String.raw`\.`), "iu");
 
 /** @param {string} name package name without the scope */
 export const footer = (name) =>
@@ -297,7 +299,7 @@ export function checkDocumentation(installed, consumer) {
     }
   }
   filesUnder(installed).forEach((file) => {
-    expect(!/vllnt\.ai/iu.test(readFileSync(file, "utf8")), `${relative(installed, file)} mentions vllnt.ai; use vllnt.com`);
+    expect(!RETIRED_DOMAIN.test(readFileSync(file, "utf8")), `${relative(installed, file)} mentions the retired vllnt domain; use vllnt.com`);
   });
 
   // Every public export: TSDoc summary, README API row, heading in docs/; main entry has @see.
