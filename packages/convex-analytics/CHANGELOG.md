@@ -23,6 +23,11 @@ upgrading from `^0.1.0`. The next `convex deploy` also builds the changed indexe
   relative link does not resolve.
 - Export `./convex.config.js` (same target as `./convex.config`), which the Convex Components
   Directory preflight requires alongside `./_generated/component.js`.
+- Rewritten README for coding agents: when to use, a complete quick start, a table of every
+  export of every entry point, common tasks, every error code and message with its fix, limits
+  and caps, and compatibility. New `docs/react.md`; every export has a TSDoc summary and a
+  reference heading. `pnpm test:package` now also checks this documentation contract and
+  type-checks every README and docs example against the packed package and `convex` 1.45.0.
 
 ### Fixed
 
