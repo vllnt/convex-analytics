@@ -1,7 +1,7 @@
 /**
- * Pack this package, install the tarball in a temporary project, and check what a
- * consumer gets under node_modules/@vllnt/convex-analytics/: the required docs and
- * entry points are present, contributor and internal files are absent, and every
+ * Pack this package, install the tarball with pnpm (under the repo's release-age rule) in a
+ * temporary project, and check what a consumer gets under node_modules/@vllnt/convex-analytics/:
+ * the required docs and entry points are present, contributor and internal files are absent, and every
  * relative link in llms.txt, README.md and docs/*.md resolves inside the installed package.
  * It imports every `exports` entry with plain Node and type-checks a strict `nodenext`
  * consumer that imports from every entry. Then it runs the documentation contract (check-documentation.mjs) on the installed docs and
@@ -92,6 +92,22 @@ const REPO_BLOB = /^https:\/\/github\.com\/vllnt\/convex-analytics\/blob\/[^/]+\
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporary = mkdtempSync(join(tmpdir(), "convex-analytics-consumer-"));
 const failures = [];
+
+/**
+ * The `minimumReleaseAge` and `minimumReleaseAgeExclude` lines of a pnpm-workspace.yaml,
+ * re-emitted so the temporary install cannot drift from the repo rule.
+ * @param {string} file @returns {string}
+ */
+function releaseAgeRule(file) {
+  const text = readFileSync(file, "utf8");
+  const age = /^minimumReleaseAge:[ \t]*(\d+)[ \t]*$/mu.exec(text)?.[1];
+  const list = /^minimumReleaseAgeExclude:[ \t]*\n((?:[ \t]+-.*(?:\n|$))+)/mu.exec(text)?.[1];
+  if (age === undefined || list === undefined) {
+    throw new Error(`${file}: expected minimumReleaseAge and a minimumReleaseAgeExclude list`);
+  }
+  const excluded = [...list.matchAll(/^[ \t]+-[ \t]*["']?([^"'\s#]+)["']?/gmu)].map((match) => `  - "${match[1]}"`);
+  return `minimumReleaseAge: ${age}\nminimumReleaseAgeExclude:\n${excluded.join("\n")}\n`;
+}
 
 /** @param {string} dir @returns {string[]} */
 function walk(dir) {
@@ -195,11 +211,15 @@ try {
   );
   const tarball = join(temporary, packed[0].filename);
   writeFileSync(join(temporary, "package.json"), JSON.stringify({ private: true, type: "module" }));
-  execFileSync(
-    "npm",
-    ["install", tarball, ...EXAMPLE_DEPENDENCIES, "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund", "--loglevel=error"],
-    { cwd: temporary, stdio: "inherit" },
-  );
+  // No lockfile here, so versions resolve fresh: pnpm applies the repo's release-age rule
+  // (npm ignores it). Peers are neither auto-installed nor strict, as with --legacy-peer-deps.
+  const workspace = `${releaseAgeRule(join(packageDir, "..", "..", "pnpm-workspace.yaml"))}autoInstallPeers: false\nstrictPeerDependencies: false\n`;
+  writeFileSync(join(temporary, "pnpm-workspace.yaml"), workspace);
+  console.log(`temporary pnpm-workspace.yaml:\n${workspace}`);
+  execFileSync("pnpm", ["add", tarball, ...EXAMPLE_DEPENDENCIES, "--ignore-scripts", "--loglevel=error"], {
+    cwd: temporary,
+    stdio: "inherit",
+  });
 
   const installed = join(temporary, "node_modules", "@vllnt", "convex-analytics");
   for (const path of REQUIRED) {
