@@ -147,7 +147,9 @@ tarball and checks the required files, the excluded internal files, and every re
 Add a new user page to `files` and to `REQUIRED` in `scripts/test-package.mjs`.
 It also imports every `exports` entry with plain Node (except the commented
 `TYPE_CHECK_ONLY` entries) and type-checks a strict `nodenext` consumer importing from every
-entry; a new export needs a row in `ENTRY_IMPORTS`. The publish `quality` job runs it before
+entry, without `skipLibCheck`: an error in the installed package's own `.d.ts` files fails, and
+one in another package's declarations prints as an ignored `NOTE`; a new export needs a row in
+`ENTRY_IMPORTS`. The publish `quality` job runs it before
 both channels. `pnpm lint` also runs `scripts/test-check-package-contents.sh`, and
 `pnpm typecheck` / `typecheck:ci` also check `tests/` and `vitest.config.ts`
 (`tsconfig.test.json`; the build still compiles only `src`).
