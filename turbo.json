@@ -5,6 +5,17 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@vllnt/convex-analytics#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/README.md",
+        "$TURBO_ROOT$/LICENSE",
+        "$TURBO_ROOT$/llms.txt",
+        "$TURBO_ROOT$/docs/**"
+      ],
+      "outputs": ["dist/**", "README.md", "LICENSE", "llms.txt", "docs/**"]
+    },
     "test": {
       "dependsOn": ["build"]
     },
