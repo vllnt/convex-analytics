@@ -35,6 +35,21 @@ const OSS = "https://oss.vllnt.com";
 const PATH_COMMENT = /^\/\/ (\S+\.tsx?)\n/u;
 const SIGNATURE = /^\/\/ signature\n/u;
 const COMPILED = new Set(["ts", "tsx"]);
+/**
+ * The phrase Limits and gotchas must contain for each hard cap in the component, keyed by
+ * `<enclosing export or constant>:<cap>`. Matched after collapsing whitespace and removing
+ * thousands separators; the cap may not be followed by another digit.
+ */
+export const CAP_PHRASES = {
+  "top:100": "`top`: `limit` defaults to 20 and is capped at 100",
+  "funnel:10000": "`funnel` reads at most 10000 events per step",
+  "retention:10000": "`retention` reads at most 10000 subjects",
+  "retention:30": "caps `periods` at 30",
+  "distribution:50000": "`distribution` reads at most 50000 events",
+  "backfill:50001": "`backfill` reads at most 50001 events",
+  "MAINTENANCE_CAP:500": "at most 500 rows per run",
+  "SCOPE_BATCH:100": "page through scopes 100 at a time",
+};
 /** The retired vllnt domain, built from parts so this file does not contain it. */
 const RETIRED_DOMAIN = new RegExp(["vllnt", "ai"].join(String.raw`\.`), "iu");
 
@@ -330,16 +345,58 @@ export function checkDocumentation(installed, consumer) {
   expect(messages.size > 0, "found no thrown messages in src; update the pattern in check-documentation.mjs");
   messages.forEach((message) => expect(errors.includes(`\`${message}\``), `Errors and fixes lacks the message "${message}"`));
 
-  // Every hard cap in the component (.take(N), Math.min(x, N)) is in Limits and gotchas.
-  const limits = section("Limits and gotchas").replaceAll(/(\d),(?=\d{3}\b)/gu, "$1");
-  const caps = new Set([
-    ...[...sourceText.matchAll(/\.take\(\s*(\d+)\s*\)/gu)].map((m) => String(m[1])),
-    ...[...sourceText.matchAll(/Math\.min\([^,()]+,\s*(\d+)\s*\)/gu)].map((m) => String(m[1])),
-    ...[...sourceText.matchAll(/const [A-Z_]*(?:CAP|BATCH)\s*=\s*(\d+)/gu)].map((m) => String(m[1])),
-  ]);
-  caps.forEach((cap) => expect(new RegExp(String.raw`\b${cap}\b`, "u").test(limits), `Limits and gotchas does not mention the cap ${cap}`));
+  // Every hard cap in the component (.take(N), Math.min(x, N), *_CAP / *_BATCH constants) is
+  // stated in Limits and gotchas by its CAP_PHRASES phrase, so the number is checked in context.
+  const limits = section("Limits and gotchas")
+    .replaceAll(/(\d),(?=\d{3}\b)/gu, "$1")
+    .replaceAll(/\s+/gu, " ");
+  const caps = new Set(component.flatMap((file) => capsIn(readFileSync(file, "utf8"))));
+  expect(caps.size > 0, "found no caps in src; update capsIn in check-documentation.mjs");
+  caps.forEach((key) => {
+    const phrase = CAP_PHRASES[/** @type {keyof typeof CAP_PHRASES} */ (key)];
+    if (phrase === undefined) {
+      failures.push(`src has the cap ${key} with no phrase; add it to CAP_PHRASES in check-documentation.mjs and to Limits and gotchas`);
+      return;
+    }
+    const pattern = new RegExp(`${phrase.replaceAll(/[$()*+.?[\\\]^{|}]/gu, String.raw`\$&`)}(?!\\d)`, "u");
+    expect(pattern.test(limits), `Limits and gotchas must say "${phrase}" (cap ${key} in src)`);
+  });
+  Object.keys(CAP_PHRASES).forEach((key) => {
+    expect(caps.has(key), `CAP_PHRASES has ${key}, which is not a cap in src; remove or update it`);
+  });
 
   return { examples, failures };
+}
+
+/**
+ * Caps in one source file as `<enclosing export or constant>:<cap>`.
+ * @param {string} text
+ */
+export function capsIn(text) {
+  /** @param {number} index */
+  const owner = (index) => [...text.slice(0, index).matchAll(/export const (\w+)/gu)].at(-1)?.[1] ?? "module";
+  return [
+    ...[...text.matchAll(/\.take\(\s*(\d+)\s*\)|Math\.min\([^,()]+,\s*(\d+)\s*\)/gu)].map(
+      (m) => `${owner(m.index)}:${String(m[1] ?? m[2])}`,
+    ),
+    ...[...text.matchAll(/const ([A-Z_]*(?:CAP|BATCH))\s*=\s*(\d+)/gu)].map((m) => `${String(m[1])}:${String(m[2])}`),
+  ];
+}
+
+/**
+ * API table rows as `{ name, from, line }`: `name` is the first backticked token of the first
+ * cell up to `(` (so `track(ctx, ...)` gives `track`), `from` the second cell.
+ * @param {string} table
+ */
+export function apiRows(table) {
+  return table
+    .split("\n")
+    .slice(2)
+    .map((line) => {
+      const cells = line.split(/(?<!\\)\|/u).slice(1, -1).map((cell) => cell.trim());
+      const name = /`([^`(\s]+)/u.exec(cells[0] ?? "")?.[1] ?? "";
+      return { from: cells[1] ?? "", line, name };
+    });
 }
 
 /**
@@ -350,9 +407,7 @@ export function checkDocumentation(installed, consumer) {
  * @param {(ok: boolean, message: string) => void} expect
  */
 function checkExports(consumer, metadata, table, headings, expect) {
-  const entries = Object.keys(metadata.exports).filter(
-    (key) => key !== "./package.json" && !key.endsWith(".js"),
-  );
+  const entries = Object.keys(metadata.exports).filter((key) => key !== "./package.json");
   const probe = join(consumer, "documentation-probe.ts");
   writeFileSync(
     probe,
@@ -374,6 +429,12 @@ function checkExports(consumer, metadata, table, headings, expect) {
   const summary = (symbol) => ts.displayPartsToString(symbol.getDocumentationComment(checker)).trim().length > 0;
   const page = `${OSS}/packages/${metadata.name.split("/").at(-1)}`;
   let seeFound = false;
+  /** @type {Map<string, Set<string>>} entry -> exported names */
+  const exported = new Map();
+  /** @type {Set<string>} public methods of exported classes */
+  const methods = new Set();
+  /** @type {Set<string>} `<file>.<function>` of the generated ComponentApi */
+  const functions = new Set();
   imports.forEach((statement, index) => {
     const entry = String(entries[index]);
     const module = checker.getSymbolAtLocation(statement.moduleSpecifier);
@@ -381,6 +442,7 @@ function checkExports(consumer, metadata, table, headings, expect) {
     if (module === undefined) return;
     const symbols = checker.getExportsOfModule(module);
     expect(symbols.length > 0, `${entry} exports nothing`);
+    exported.set(entry, new Set(symbols.map((symbol) => symbol.name)));
     symbols.forEach((symbol) => {
       const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
       const isDefault = symbol.name === "default";
@@ -394,6 +456,17 @@ function checkExports(consumer, metadata, table, headings, expect) {
       if (entry === "." && target.getJsDocTags(checker).some((tag) => tag.name === "see" && ts.displayPartsToString(tag.text).includes(page))) {
         seeFound = true;
       }
+      if (symbol.name === "ComponentApi") {
+        checker
+          .getDeclaredTypeOfSymbol(target)
+          .getProperties()
+          .forEach((file) => {
+            checker
+              .getTypeOfSymbol(file)
+              .getProperties()
+              .forEach((fn) => functions.add(`${file.name}.${fn.name}`));
+          });
+      }
       if (!(target.flags & ts.SymbolFlags.Class)) return;
       checker
         .getDeclaredTypeOfSymbol(target)
@@ -404,6 +477,7 @@ function checkExports(consumer, metadata, table, headings, expect) {
           return !(ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.NonPublicAccessibilityModifier);
         })
         .forEach((method) => {
+          methods.add(method.name);
           expect(summary(method), `${symbol.name}.${method.name} has no TSDoc summary`);
           expect(table.includes(`\`${method.name}(`), `README API table lacks ${method.name}(`);
           expect(headings.has(slug(method.name)), `docs/ has no heading for ${method.name}`);
@@ -411,6 +485,27 @@ function checkExports(consumer, metadata, table, headings, expect) {
     });
   });
   expect(seeFound, `an export of the main entry needs TSDoc @see ${page}`);
+
+  // Reverse: every API table row names something that exists where the row says it does.
+  const specifier = new RegExp(String.raw`^${metadata.name.replaceAll(/[$()*+./?[\\\]^{|}]/gu, String.raw`\$&`)}(/.+)?$`, "u");
+  apiRows(table).forEach(({ from, line, name }) => {
+    if (/`AnalyticsClient` method/u.test(from)) {
+      expect(methods.has(name), `README API row names ${name} as an AnalyticsClient method, which it is not: ${line}`);
+      return;
+    }
+    const component = /^`components\.\w+\.(\w+)`/u.exec(from);
+    if (component !== null) {
+      expect(functions.has(`${String(component[1])}.${name}`), `README API row names ${String(component[1])}.${name}, which ComponentApi lacks: ${line}`);
+      return;
+    }
+    const sources = [...from.matchAll(/`([^`]+)`/gu)].map(([, token = ""]) =>
+      token.startsWith("./") ? token : `.${specifier.exec(token)?.[1] ?? (specifier.test(token) ? "" : `?${token}`)}`,
+    );
+    expect(sources.length > 0, `README API row has no entry point in its second cell: ${line}`);
+    sources.forEach((source) => {
+      expect(exported.get(source)?.has(name) === true, `README API row names ${name} from ${source}, which does not export it: ${line}`);
+    });
+  });
 }
 
 /**
