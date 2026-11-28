@@ -11,8 +11,8 @@ This release changes behaviour for invalid input: calls that `0.1.0` accepted wi
 infinite numbers, empty strings or out-of-range limits now throw typed `ConvexError` codes (see
 **Fixed**), and the REST routes answer them with `400`; non-scalar REST `props` return `400`
 instead of failing unhandled. Hosts that passed such input must handle these errors before
-upgrading from `^0.1.0`. The next `convex deploy` also builds the changed indexes (see
-**Changed**) over existing rows, which takes longer on large `rollups` tables.
+upgrading from `^0.1.0`. The next `convex deploy` also builds the new indexes (see **Changed**
+and **Fixed**) over existing rows, which takes longer on large `rollups` and `subjects` tables.
 
 ### Added
 
@@ -35,7 +35,7 @@ upgrading from `^0.1.0`. The next `convex deploy` also builds the changed indexe
   `INVALID_TIMESTAMP`, `INVALID_SAMPLE_RATE`, `INVALID_PROP_VALUE`, `INVALID_PROP_KEY`,
   `INVALID_COUNT`, `INVALID_CURSOR`, `INVALID_BUCKETS`, `INVALID_CONFIG`): `NaN` or infinite
   `ts`, range bounds, `sampleRate` and number props; empty `scope`, `name`, `subjectRef`,
-  `sessionRef`, `dedupeKey`, dimensions and config keys; non-scalar props; non-positive or
+  `sessionRef`, `dedupeKey`, dimensions and config keys; non-scalar REST `props` values; non-positive or
   non-integer `limit`, `periods` and `numItems`; and non-numeric `list` cursors. A negative
   `top` limit used to return all but the last rows; non-finite timestamps used to create `NaN`
   rollup buckets.
