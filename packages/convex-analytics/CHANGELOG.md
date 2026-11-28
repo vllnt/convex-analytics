@@ -66,6 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release flow: canary publishes on every qualifying push to `main` without a repository-variable
   gate, and a change to the shipped docs, `llms.txt`, README, LICENSE or changelog alone now
   triggers it.
+- Dependencies: `@convex-dev/rate-limiter` `^0.4.2` → `^0.4.3` and `@convex-dev/sharded-counter`
+  `^0.2.3` → `^0.2.4`. The `convex` peer range stays `^1.45.0`; tests pass on 1.45.0 and 1.51.0.
 
 ## [0.1.0] - 2026-09-01
 

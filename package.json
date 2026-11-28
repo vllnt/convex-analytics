@@ -23,8 +23,8 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@7.0.2",
     "@vllnt/eslint-config": "2.1.0",
-    "eslint": "^9.39.5",
-    "turbo": "^2.11.11",
+    "eslint": "^10.15.0",
+    "turbo": "^2.11.13",
     "typescript-eslint": "^8.73.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
@@ -37,8 +37,7 @@
       "esbuild"
     ],
     "overrides": {
-      "minimatch@>=7.0.0 <11.0.1": "11.0.5",
-      "convex-helpers": "0.1.129",
+      "minimatch@>=7.0.0 <11.0.1": "11.0.9",
       "deepmerge-ts@<8.0.0": "8.0.2",
       "handlebars@<4.7.10": "4.7.10"
     }
