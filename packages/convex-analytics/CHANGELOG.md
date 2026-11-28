@@ -8,9 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - Unreleased
 
 This release changes behaviour for invalid input: calls that `0.1.0` accepted with `NaN` or
-infinite numbers, empty strings, non-scalar props or out-of-range limits now throw typed
-`ConvexError` codes (see **Fixed**), and the REST routes answer them with `400`. Hosts that
-passed such input must handle these errors before upgrading from `^0.1.0`.
+infinite numbers, empty strings or out-of-range limits now throw typed `ConvexError` codes (see
+**Fixed**), and the REST routes answer them with `400`; non-scalar REST `props` return `400`
+instead of failing unhandled. Hosts that passed such input must handle these errors before
+upgrading from `^0.1.0`. The next `convex deploy` also builds the changed indexes (see
+**Changed**) over existing rows, which takes longer on large `rollups` tables.
 
 ### Added
 
@@ -19,6 +21,8 @@ passed such input must handle these errors before upgrading from `^0.1.0`.
   `llms.txt` links to them with relative paths. `pnpm test:package` (run in CI) installs the
   packed tarball and fails when a required file is missing, an internal file ships, or a
   relative link does not resolve.
+- Export `./convex.config.js` (same target as `./convex.config`), which the Convex Components
+  Directory preflight requires alongside `./_generated/component.js`.
 
 ### Fixed
 
@@ -44,8 +48,6 @@ passed such input must handle these errors before upgrading from `^0.1.0`.
   type-checks under `moduleResolution: nodenext`.
 - `convex` is declared only as a (now required) peer dependency, no longer also as a runtime
   dependency, so a host on `convex` 1.45 to 1.47 no longer gets a second, nested `convex` copy.
-- Export `./convex.config.js` (same target as `./convex.config`), which the Convex Components
-  Directory preflight requires alongside `./_generated/component.js`.
 - The package build's turbo cache now covers the docs it copies from the repo root, so a build
   can no longer ship stale or missing `README.md`, `LICENSE`, `llms.txt` or `docs/` after a root
   doc change or a cache hit. `pnpm lint` checks this with a turbo dry run.
@@ -74,8 +76,10 @@ passed such input must handle these errors before upgrading from `^0.1.0`.
 - Release flow: canary publishes on every qualifying push to `main` without a repository-variable
   gate, and a change to the shipped docs, `llms.txt`, README, LICENSE or changelog alone now
   triggers it.
-- Dependencies: `@convex-dev/rate-limiter` `^0.4.2` → `^0.4.3` and `@convex-dev/sharded-counter`
-  `^0.2.3` → `^0.2.4`. The `convex` peer range stays `^1.45.0`; tests pass on 1.45.0 and 1.51.0.
+- Dependencies since `0.1.0`: `@convex-dev/rate-limiter` `^0.3.2` → `^0.4.3` (its component adds a
+  `pendingUpdates` table, created on deploy), `@convex-dev/aggregate` `^0.3.0` → `^0.3.4` and
+  `@convex-dev/sharded-counter` `^0.2.1` → `^0.2.4`. The `convex` peer range stays `^1.45.0`;
+  tests pass on 1.45.0 and 1.51.0.
 
 ## [0.1.0] - 2026-09-01
 
