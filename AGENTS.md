@@ -103,6 +103,8 @@ The component never reads host or sibling tables. Host data enters only as opaqu
 - Explicit `args` + `returns` on every Convex function.
 - Host data via typed generics / host-supplied validator — never `v.any()`.
 - Runtime deps: only official `@convex-dev/*` (aggregate, sharded-counter, rate-limiter).
+- Dependency age gate: `minimumReleaseAge` (7 days) and `minimumReleaseAgeExclude` live in
+  `pnpm-workspace.yaml`; pnpm 10 ignores them under `package.json` `pnpm`.
 - This is a monorepo; each package stays green independently (`pnpm typecheck`, `pnpm test`).
 
 ## Commands

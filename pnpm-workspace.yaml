@@ -1,2 +1,8 @@
 packages:
   - "packages/*"
+
+# Supply-chain gate: refuse versions published less than 7 days (10080 minutes) ago.
+# pnpm 10 reads these from pnpm-workspace.yaml, not from package.json.
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - "@vllnt/*"
