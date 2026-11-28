@@ -111,8 +111,9 @@ is seen; the `prune` and `closeSessions` crons page through it to visit each sco
 
 ## config
 
-Cron-relevant config, keyed by `(scope, key)`. Values are stored as strings. Set via
-`client.configure(ctx, { ... })`; also holds the REST `apiKeys` array (JSON string).
+Config keyed by `(scope, key)`; values are strings. `client.configure(ctx, { ... })` writes
+`retentionDays`, `sessionIdleMs` (read by the crons) and `sampleRate` (stored, not read). The
+component mutation `configSet` writes any key, including the REST `apiKeys` array (JSON string).
 
 | Field   | Type   | Description                                                             |
 | ------- | ------ | ----------------------------------------------------------------------- |
@@ -130,6 +131,6 @@ Cron-relevant config, keyed by `(scope, key)`. Values are stored as strings. Set
 
 | Component      | Package                       | Role                                     |
 | -------------- | ----------------------------- | ---------------------------------------- |
-| aggregate      | `@convex-dev/aggregate`       | Mounted for compatibility; not written or read. |
+| aggregate      | `@convex-dev/aggregate`       | Mounted; not written or read. |
 | shardedCounter | `@convex-dev/sharded-counter` | O(1) total per `(scope, name)` (16 shards). |
 | rateLimiter    | `@convex-dev/rate-limiter`    | Per-`sessionRef` token bucket at ingest. |

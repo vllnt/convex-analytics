@@ -2,11 +2,12 @@
 
 A lean, generic HTTP surface. Routes are namespaced under the host's chosen `httpPrefix`
 when the component is mounted with one. Every route requires an `x-api-key` header matching
-the JSON-array config at `(scope, "apiKeys")`, compared timing-safe.
+the JSON-array config at `(scope, "apiKeys")`. The comparison does not stop at the first
+differing character; it returns early only when the lengths differ.
 
 Mount with `app.use(analytics, { httpPrefix: "/analytics" })`; `/metric` below then means
 `https://<deployment>.convex.site/analytics/metric`. Without `httpPrefix`, these routes are not
-exposed. See [Quick Start](quick-start.md#6-optional-rest-access) for key setup through the
+exposed. See [Quick Start](quick-start.md#4-optional-rest-access) for key setup through the
 component's `mutations.configSet` (there is no `AnalyticsClient.configSet` method).
 
 Source: `src/component/http.ts` in the package (`packages/convex-analytics/src/component/http.ts`
@@ -41,6 +42,9 @@ Ingest one event.
 | `sampleRate`    | No       | number   | `0..1`.                                             |
 | `scope`         | No       | string   | Partition. Default `"default"`.                     |
 
+`subjectRef`, `sessionRef`, `dedupeKey` (strings) and `ts`, `sampleRate` (numbers) are ignored,
+not rejected, when they have another type.
+
 **Response**: `201` with `{ "result": "tracked" | "dropped" | "duplicate" }`.
 A 201 does not imply storage: inspect `result`. With `sessionRef`, a fixed token bucket per
 `(scope, sessionRef)` refills at 100/minute with capacity 10; exhausted requests return
@@ -53,7 +57,7 @@ session rate-limit check.
 | ------------ | -------- | ------------------------------------------------------- |
 | `name`       | Yes      | Event name.                                             |
 | `from`, `to` | No       | Range bounds (epoch ms).                                |
-| `dim`, `val` | No       | Filter to one dimension value (both required together). |
+| `dim`, `val` | No       | Filter to one dimension value. Ignored unless both are set. |
 | `scope`      | No       | Partition.                                              |
 
 **Response**: `{ "name": "...", "count": N }`.
@@ -86,15 +90,16 @@ session rate-limit check.
 | Param         | Required | Description                                  |
 | ------------- | -------- | -------------------------------------------- |
 | `granularity` | No       | `minute` \| `hour` \| `day` (default `day`). |
-| `from`, `to`  | No       | Range bounds (epoch ms).                     |
+| `from`, `to`  | No       | Range bounds (epoch ms). Default: the 30 days before `to` (or now). |
 | `scope`       | No       | Partition.                                   |
 
 **Response**: `{ "dau": N, "wau": N, "mau": N, "trend": [{ "bucket": N, "uniques": N }] }`.
+See [`uniques`](client-sdk.md#uniques) for how each number is computed.
 
 ## Auth & errors
 
 - Configure keys by writing a JSON string array to config `(scope, "apiKeys")` (the `apiKeys` config key).
-- Missing or invalid key → `401 { "error": "..." }`.
+- Missing key, no `apiKeys` for the scope, or a key not in the list → `401 { "error": "..." }`.
 - Invalid input returns `400`. Typed errors from the table below (for example a non-numeric
   `from`, `to`, or `limit`, nested or array `props` values, prop keys Convex cannot store)
   return `{ "error": "...", "code": "..." }`. Checks done in the route itself return
@@ -108,7 +113,8 @@ misconfigured" }`.
 ## Input errors
 
 Mutations and queries reject clearly invalid input with a `ConvexError` whose data is
-`{ code, message }`. Catch it and branch on `code`:
+`{ code, message }`. Catch it and branch on `code`. Every error, with its fix, is in the README
+[Errors and fixes](../README.md#errors-and-fixes) table.
 
 | Code                  | Raised when                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------- |

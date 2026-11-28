@@ -67,11 +67,12 @@ interface ComponentApi {
 const DEFAULT_SCOPE = "default";
 
 /**
- * AnalyticsClient — typed, configurable wrapper over the analytics component.
+ * Host-side client for the analytics component: `track` events and read
+ * aggregates from Convex queries, mutations and actions.
  *
  * Generic over the host's props shape `TProps` for compile-time typing of
- * `track`. Config (`scope`, `dimensions`, `granularities`, ...) is stored on
- * the client and applied to every call — not ignored.
+ * `track`. `scope`, `dimensions`, `granularities` and `sampleRate` are stored on
+ * the client and sent with every call.
  *
  * @example
  * ```ts
@@ -82,6 +83,8 @@ const DEFAULT_SCOPE = "default";
  * await analytics.track(ctx, "signup", { subjectRef: userId, props: { plan: "pro" } });
  * const total = await analytics.metric(ctx, "signup");
  * ```
+ *
+ * @see https://oss.vllnt.com/packages/convex-analytics
  */
 export class AnalyticsClient<TProps extends Props = Props> {
   private readonly component: ComponentApi;
@@ -100,7 +103,11 @@ export class AnalyticsClient<TProps extends Props = Props> {
     this.sampleRate = config.sampleRate ?? 1;
   }
 
-  /** Ingest an event: rollup-on-write + raw event + counter. Sampling + dedupe applied. */
+  /**
+   * Ingest one event: write the raw event, bump the rollup rows and the lifetime counter.
+   * Returns `"dropped"` when rate-limited or sampled out, `"duplicate"` when `dedupeKey` matches
+   * a retained event in the scope, otherwise `"tracked"`.
+   */
   async track(
     ctx: MutationCtx,
     name: string,
@@ -120,7 +127,10 @@ export class AnalyticsClient<TProps extends Props = Props> {
     } as never)) as TrackResult;
   }
 
-  /** Total count over a range, optionally filtered by a dimension value. */
+  /**
+   * Event count. Without `range` and `where`: the lifetime counter. With either: the sum of the
+   * matching `day` rollup rows (`0` when `granularities` leaves out `"day"`).
+   */
   async metric(
     ctx: QueryCtx,
     name: string,
@@ -134,7 +144,7 @@ export class AnalyticsClient<TProps extends Props = Props> {
     } as never)) as number;
   }
 
-  /** Top values of a dimension (breakdown). */
+  /** Top values of one dimension from `day` rollups, by count (`limit` default 20, max 100). */
   async top(
     ctx: QueryCtx,
     name: string,
@@ -150,7 +160,7 @@ export class AnalyticsClient<TProps extends Props = Props> {
     } as never)) as TopRow[];
   }
 
-  /** Bucketed counts over a range. */
+  /** Per-bucket counts at one granularity; only buckets with events are returned. */
   async timeseries(
     ctx: QueryCtx,
     name: string,
@@ -165,7 +175,10 @@ export class AnalyticsClient<TProps extends Props = Props> {
     } as never)) as TimeseriesPoint[];
   }
 
-  /** DAU/WAU/MAU from subjects. */
+  /**
+   * Distinct-subject counts from each subject's last-seen time: `wau` / `mau` count subjects last
+   * seen within 7 / 30 days before `range.to`; `dau` is the mean of the `trend` buckets.
+   */
   async uniques(
     ctx: QueryCtx,
     opts: { range: Range; granularity: Granularity; scope?: string },
@@ -177,7 +190,7 @@ export class AnalyticsClient<TProps extends Props = Props> {
     } as never)) as UniquesView;
   }
 
-  /** Ordered step conversion (generic, keyed by subjectRef). */
+  /** Ordered step conversion keyed by `subjectRef`; needs at least 2 steps. */
   async funnel(
     ctx: QueryCtx,
     steps: string[],
@@ -190,7 +203,10 @@ export class AnalyticsClient<TProps extends Props = Props> {
     } as never)) as FunnelStep[];
   }
 
-  /** Cohort return rates by first-seen period. */
+  /**
+   * Cohorts by first-seen bucket; `retained[p]` is the share of the cohort whose last event falls
+   * in bucket `p + 1` after the cohort bucket (`periods` capped at 30).
+   */
   async retention(
     ctx: QueryCtx,
     opts: {
@@ -225,7 +241,7 @@ export class AnalyticsClient<TProps extends Props = Props> {
     } as never)) as DistributionView;
   }
 
-  /** Paginated raw events for an event name, newest first. */
+  /** One page of raw events for an event name, newest first. */
   async list(
     ctx: QueryCtx,
     name: string,
@@ -239,7 +255,11 @@ export class AnalyticsClient<TProps extends Props = Props> {
     } as never)) as EventPage;
   }
 
-  /** Persist cron-relevant config (retention/sampling/idle) for the scope. */
+  /**
+   * Store `retentionDays` and `sessionIdleMs` for the scope so the prune and close-sessions crons
+   * use them. Omitted options fall back to the constructor config. `sampleRate` is stored too,
+   * but nothing reads it: `track` uses the client's `sampleRate`.
+   */
   async configure(
     ctx: MutationCtx,
     opts: {

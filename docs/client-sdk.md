@@ -1,234 +1,359 @@
-# Client SDK
+# Client SDK reference
 
-TypeScript API reference for the `AnalyticsClient<TProps>` class.
+Reference for the main entry `@vllnt/convex-analytics` (`AnalyticsClient` and its types),
+`@vllnt/convex-analytics/convex.config` and `@vllnt/convex-analytics/test`. The web preset is
+in [Web Preset](./web-preset.md), the React hooks in [React hooks](./react.md), the REST routes
+in [REST API](./api-reference.md).
 
-Source: `src/client/index.ts` in the package (`packages/convex-analytics/src/client/index.ts`
-in the repository).
+Source: `src/client/index.ts` and `src/client/types.ts` in the package
+(`packages/convex-analytics/src/client/` in the repository).
 
-## Constructor
+## AnalyticsClient
 
 ```ts
-new AnalyticsClient<TProps>(component: unknown, config?: AnalyticsConfig)
+// signature
+new AnalyticsClient<TProps extends Props = Props>(component: unknown, config?: AnalyticsConfig)
 ```
 
-`component` comes from `components.analytics` after mounting. `TProps` types the `props`
-passed to `track` (defaults to `Record<string, Scalar>`). This is compile-time typing;
-validate untrusted input in host functions. There is no `propsValidator` constructor option.
+`component` is `components.analytics` (or the name you mounted it under). `TProps` types the
+`props` passed to `track`. It is compile-time typing only: validate untrusted input in your
+own functions. There is no `propsValidator` option.
+
+The client works with any Convex `ctx` that has `runMutation` (for `track` and `configure`) or
+`runQuery` (for the reads): queries, mutations, actions and HTTP actions.
+
+```ts
+// convex/client.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+
+import { components } from "./_generated/api";
+
+type SignupProps = { plan?: string; country?: string };
+
+export const analytics = new AnalyticsClient<SignupProps>(components.analytics, {
+  dimensions: ["plan", "country"],
+  granularities: ["hour", "day"],
+});
+```
 
 ### AnalyticsConfig
 
-Stored on the client and applied to every call. All optional.
+All options are optional; the defaults work with no config.
 
-```ts
-interface AnalyticsConfig {
-  scope?: string; // default "default"
-  dimensions?: string[]; // default []
-  granularities?: ("minute" | "hour" | "day")[]; // default ["day"]
-  retentionDays?: number; // default 90
-  sampleRate?: number; // 0..1, default 1
-  sessionIdleMs?: number; // default 1_800_000 (30m)
-}
-```
-
-| Option          | Default     | Applied         | Purpose                                                        |
-| --------------- | ----------- | --------------- | -------------------------------------------------------------- |
-| `scope`         | `"default"` | per call        | Multi-tenant partition. Overridable per call via `opts.scope`. |
-| `dimensions`    | `[]`        | per `track`     | Prop keys to roll up on. Empty = count by event name only.     |
-| `granularities` | `["day"]`   | per `track`     | Rollup bucket sizes. `"minute"` for short live windows.        |
-| `retentionDays` | `90`        | via `configure` | Raw-event TTL in days. Rollups kept forever.                   |
-| `sampleRate`    | `1`         | per `track`     | Fraction of events kept at ingest.                             |
-| `sessionIdleMs` | `1_800_000` | via `configure` | Idle timeout before a session is closed.                       |
+| Option          | Type                              | Default     | Applied         | Purpose                                                   |
+| --------------- | --------------------------------- | ----------- | --------------- | --------------------------------------------------------- |
+| `scope`         | `string`                          | `"default"` | every call      | Partition. Every method also takes `opts.scope`.           |
+| `dimensions`    | `string[]`                        | `[]`        | every `track`   | Props keys to roll up on. `[]` counts by event name only. |
+| `granularities` | `("minute" \| "hour" \| "day")[]` | `["day"]`   | every `track`   | Rollup bucket sizes. Keep `"day"` (see below).            |
+| `retentionDays` | `number`                          | `90`        | via `configure` | Raw-event TTL in days. Rollups are kept forever.          |
+| `sampleRate`    | `number`                          | `1`         | every `track`   | Share of events kept, from 0 to 1.                        |
+| `sessionIdleMs` | `number`                          | `1800000`   | via `configure` | Idle time before the cron closes a session.               |
 
 `top`, and `metric` with a `range` or `where`, read only `day` rollups: if `granularities`
 leaves out `"day"`, they return `[]` and `0`. `timeseries` reads the granularity you ask for.
 
-`dimensions`, `granularities`, and `sampleRate` are passed into each `track` call. The
-cron-relevant values (`retentionDays`, `sampleRate`, `sessionIdleMs`) are persisted to the
-`config` table by calling `configure` once.
+`retentionDays` and `sessionIdleMs` reach the crons only when you call `configure`. Until then
+the crons use 90 days and 30 minutes, whatever the constructor says.
 
 ## Mutations
 
 ### track
 
 ```ts
-track(
-  ctx: MutationCtx,
-  name: string,
-  opts?: {
-    subjectRef?: string;
-    sessionRef?: string;
-    props?: TProps;
-    ts?: number;
-    scope?: string;
-    dedupeKey?: string;
-  },
-): Promise<"tracked" | "dropped" | "duplicate">
+// signature
+track(ctx, name: string, opts?: TrackOpts<TProps>): Promise<TrackResult>
 ```
 
-Ingest one event. Rollup-on-write: increments the total + each host-declared dimension
-present in `props`, writes the raw event, and bumps the sharded counter.
+Stores one event: writes the raw event, upserts the session (when `sessionRef` is set) and the
+subject (when `subjectRef` is set), increments the total rollup row and one row per declared
+dimension present in `props` for each granularity, and increments the lifetime counter. In order:
 
-- **Rate limit** — when `sessionRef` is set, a token bucket per `(scope, sessionRef)` refills at 100 events/minute with capacity 10; over-limit returns `"dropped"`. These limits are fixed in the component, not configurable through this client. Omitting `sessionRef` bypasses this limiter.
-- **Sampling** — when `sampleRate < 1`, a fraction of events return `"dropped"`.
-- **Dedupe** — when `dedupeKey` is set and an event already exists for it in the scope, returns `"duplicate"`.
-- Otherwise returns `"tracked"`.
+1. Rate limit: when `sessionRef` is set, a token bucket per `(scope, sessionRef)` refills at
+   100 events per minute with capacity 10. Over the limit returns `"dropped"`. The limit is
+   fixed. Omitting `sessionRef` skips it.
+2. Sampling: when `sampleRate < 1`, the sampled-out share returns `"dropped"`.
+3. Dedupe: when `dedupeKey` is set and a retained event in the scope has it, returns
+   `"duplicate"`. Pruned events no longer count.
+4. Otherwise returns `"tracked"`.
+
+`ts` defaults to the server time. Errors: `EMPTY_STRING`, `INVALID_TIMESTAMP`,
+`INVALID_SAMPLE_RATE`, `INVALID_PROP_KEY`, `INVALID_PROP_VALUE` (see
+[Errors and fixes](../README.md#errors-and-fixes)).
 
 ### configure
 
 ```ts
-configure(
-  ctx: MutationCtx,
-  opts?: {
-    retentionDays?: number;
-    sampleRate?: number;
-    sessionIdleMs?: number;
-    scope?: string;
-  },
-): Promise<void>
+// signature
+configure(ctx, opts?: { retentionDays?: number; sampleRate?: number; sessionIdleMs?: number; scope?: string }): Promise<void>
 ```
 
-Persist cron-relevant config for the scope so the `prune` and `closeSessions` crons can read
-it. Falls back to the client's constructor config when an option is omitted.
+Stores `retentionDays` and `sessionIdleMs` in the `config` table for the scope, where the
+`prune` and `closeSessions` crons read them. An omitted option falls back to the constructor
+config; an option missing from both is not written. `sampleRate` is stored too, but nothing
+reads it. Errors: `INVALID_CONFIG`, `INVALID_SAMPLE_RATE`.
 
 ## Queries
 
 ### metric
 
 ```ts
-metric(ctx, name, opts?: { range?: Range; where?: Where; scope?: string }): Promise<number>
+// signature
+metric(ctx, name: string, opts?: { range?: Range; where?: Where; scope?: string }): Promise<number>
 ```
 
-Total count for an event. With no `range`/`where`, reads the O(1) sharded counter. With a
-range or a `where` filter, sums the matching daily rollup rows.
+Without `range` and `where`: the lifetime counter for `(scope, name)`, which `prune` and
+`backfill` never change. With either: the sum of the matching `day` rollup rows. Range bounds
+are rounded down to the start of their day and are inclusive.
 
 ### top
 
 ```ts
-top(ctx, name, dimension, opts?: { range?: Range; limit?: number; scope?: string }): Promise<TopRow[]>
+// signature
+top(ctx, name: string, dimension: string, opts?: { range?: Range; limit?: number; scope?: string }): Promise<TopRow[]>
 ```
 
-Top values of a dimension, ranked by count (default `limit` 20, max 100). Returns
-`{ value, count }[]`.
+Values of `dimension` from `day` rollups, ranked by count. `limit` defaults to 20 and is capped
+at 100. `value` is always a string. Errors: `INVALID_COUNT`.
 
 ### timeseries
 
 ```ts
-timeseries(ctx, name, opts: { granularity: Granularity; range: Range; where?: Where; scope?: string }): Promise<TimeseriesPoint[]>
+// signature
+timeseries(ctx, name: string, opts: { granularity: Granularity; range: Range; where?: Where; scope?: string }): Promise<TimeseriesPoint[]>
 ```
 
-Bucketed counts. Returns `{ bucket, count }[]` sorted ascending by bucket.
+Counts per bucket, sorted by ascending `bucket` (bucket start in epoch milliseconds). Only
+buckets that have events are returned. `range` is required but `{}` reads all buckets.
 
 ### uniques
 
 ```ts
+// signature
 uniques(ctx, opts: { range: Range; granularity: Granularity; scope?: string }): Promise<UniquesView>
 ```
 
-Distinct-subject counts. Returns `{ dau, wau, mau, trend }` where `trend` is
-`{ bucket, uniques }[]`.
+Reads subjects whose last event (`lastSeen`) is in the range (default: the 30 days before
+`range.to`, which defaults to now). `wau` / `mau` count those last seen within 7 / 30 days
+before `range.to`. `trend` puts each subject in the bucket of its last event; `dau` is the
+rounded mean of the `trend` buckets. A subject seen again after `range.to` is not counted.
 
 ### funnel
 
 ```ts
+// signature
 funnel(ctx, steps: string[], opts: { range: Range; scope?: string }): Promise<FunnelStep[]>
 ```
 
-Ordered step conversion, keyed by `subjectRef`. Requires at least 2 steps; scans up to
-10,000 events per step. Returns `{ name, count, rate }[]` (rate relative to the first step).
+Ordered conversion per `subjectRef`: a subject reaches step `n` when it has a step-`n` event at
+or after the time it reached step `n - 1`. `rate` is relative to the first step. Needs at least
+2 steps (else the plain `Error` `Funnel requires at least 2 steps`). Reads at most 10,000 events
+per step, oldest first; events without `subjectRef` are ignored. Default range: the 30 days
+before `range.to`.
 
 ### retention
 
 ```ts
+// signature
 retention(ctx, opts: { cohortRange: Range; periods: number; granularity?: Granularity; scope?: string }): Promise<RetentionCohort[]>
 ```
 
-Cohort return rates by first-seen period (default `granularity` `"day"`, `periods` capped at
-30). Returns `{ cohort, size, retained }[]` where `retained[p]` is the return fraction for
-period `p+1`.
+Groups subjects by the bucket of their first event (`granularity` default `"day"`).
+`retained[p]` is the share of the cohort whose last event falls in bucket `p + 1` after the
+cohort bucket, so a subject counts in one period only. `periods` is capped at 30; at most
+10,000 subjects are read. Default `cohortRange.from`: `periods` buckets before
+`cohortRange.to`. Errors: `INVALID_COUNT`.
 
 ### distribution
 
 ```ts
-distribution(ctx, name, measure: string, opts: { buckets: number[]; range?: Range; where?: Where; scope?: string }): Promise<DistributionView>
+// signature
+distribution(ctx, name: string, measure: string, opts: { buckets: number[]; range?: Range; where?: Where; scope?: string }): Promise<DistributionView>
 ```
 
-Histogram of a numeric `props` measure. `buckets` are ascending upper bounds; a value falls in
-the first bin whose `upper >= value`, and values above the last bound land in `overflow`.
-Non-numeric measure values are ignored. Returns `{ bins, overflow, count, sum }` (so
-`sum / count` is the mean). Computed from raw events in range (index-backed, bounded).
+Histogram of the numeric prop `measure`. `buckets` are upper bounds (sorted for you); a value
+falls in the first bin whose `upper >= value`, larger values in `overflow`. Non-numeric values
+are ignored. `sum / count` is the mean. Reads at most 50,000 raw events in the range, oldest
+first, then applies `where`. Default `range.from` is 0. Errors: `INVALID_BUCKETS`.
 
 ### list
 
 ```ts
-list(ctx, name, paginationOpts: { numItems: number; cursor: string | null }, opts?: { scope?: string }): Promise<EventPage>
+// signature
+list(ctx, name: string, paginationOpts: PaginationOpts, opts?: { scope?: string }): Promise<EventPage>
 ```
 
-Paginated raw events for an event name, newest first. Returns
-`{ page, isDone, continueCursor }`.
+One page of raw events for an event name, newest first. Pass `cursor: null` first, then the
+previous `continueCursor`. Events sharing the exact `ts` at a page boundary can be skipped.
+Errors: `INVALID_COUNT`, `INVALID_CURSOR`.
 
 ## Identifying entities
 
-The component stores no host id of its own. An "entity" or "instance" you slice by is a value
-in `props` under a dimension you declare — `subjectRef`, `sessionRef`, dimension values, and
-`dedupeKey` are all opaque strings you own.
+The component stores no host id. An entity you slice by (a puzzle, an org, a device) is a value
+in `props` under a dimension you declare; `subjectRef`, `sessionRef`, dimension values and
+`dedupeKey` are opaque strings you own.
 
-- **One instance** — filter by its dimension value:
-  `metric(ctx, "play", { where: { dim: "puzzleId", val: "2026-06-15" } })` or
-  `timeseries(ctx, "play", { granularity: "hour", range, where: { dim: "puzzleId", val } })`.
-- **Across instances (last N)** — break down by the dimension:
-  `top(ctx, "play", "puzzleId", { limit: 30 })`.
-- **Once per outcome** — pass your own `dedupeKey` (e.g. `` `${puzzleId}:${userId}` ``) to
-  `track` so a refresh or retried mutation counts the outcome once.
+```ts
+// convex/puzzles.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
+import { components } from "./_generated/api";
+import { mutation, query } from "./_generated/server";
+
+const analytics = new AnalyticsClient(components.analytics, { dimensions: ["puzzleId"] });
+
+export const play = mutation({
+  args: { userId: v.string(), puzzleId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { userId, puzzleId }) => {
+    // once per (puzzle, user), even on retries
+    await analytics.track(ctx, "play", {
+      subjectRef: userId,
+      props: { puzzleId },
+      dedupeKey: `${puzzleId}:${userId}`,
+    });
+    return null;
+  },
+});
+
+export const plays = query({
+  args: { puzzleId: v.string() },
+  returns: v.object({
+    one: v.number(),
+    lastThirty: v.array(v.object({ value: v.string(), count: v.number() })),
+  }),
+  handler: async (ctx, { puzzleId }) => ({
+    one: await analytics.metric(ctx, "play", { where: { dim: "puzzleId", val: puzzleId } }),
+    lastThirty: await analytics.top(ctx, "play", "puzzleId", { limit: 30 }),
+  }),
+});
+```
 
 ## Types
 
-```ts
-type Scalar = string | number | boolean | null;
-type Props = Record<string, Scalar>;
-type Granularity = "minute" | "hour" | "day";
+### Scalar
 
-interface Range {
-  from?: number;
-  to?: number;
-} // epoch ms
-interface Where {
-  dim: string;
-  val: Scalar;
-} // one dimension == one value
-interface TopRow {
-  value: string;
-  count: number;
+```ts
+// signature
+type Scalar = string | number | boolean | null;
+```
+
+### Props
+
+```ts
+// signature
+type Props = Record<string, Scalar>;
+```
+
+### Granularity
+
+```ts
+// signature
+type Granularity = "minute" | "hour" | "day";
+```
+
+### Range
+
+```ts
+// signature
+interface Range { from?: number; to?: number } // epoch milliseconds
+```
+
+### Where
+
+```ts
+// signature
+interface Where { dim: string; val: Scalar } // one dimension equals one value
+```
+
+### TrackOpts
+
+```ts
+// signature
+interface TrackOpts<TProps extends Props = Props> {
+  subjectRef?: string;
+  sessionRef?: string;
+  props?: TProps;
+  ts?: number;
+  scope?: string;
+  dedupeKey?: string;
 }
-interface TimeseriesPoint {
-  bucket: number;
-  count: number;
-}
-interface UniquesView {
-  dau: number;
-  wau: number;
-  mau: number;
-  trend: Array<{ bucket: number; uniques: number }>;
-}
-interface FunnelStep {
-  name: string;
-  count: number;
-  rate: number;
-}
-interface RetentionCohort {
-  cohort: number;
-  size: number;
-  retained: number[];
-}
-interface DistributionBin {
-  upper: number;
-  count: number;
-}
-interface DistributionView {
-  bins: DistributionBin[];
-  overflow: number;
-  count: number;
-  sum: number;
-}
+```
+
+### TrackResult
+
+```ts
+// signature
+type TrackResult = "tracked" | "dropped" | "duplicate";
+```
+
+### TopRow
+
+```ts
+// signature
+interface TopRow { value: string; count: number }
+```
+
+### TimeseriesPoint
+
+```ts
+// signature
+interface TimeseriesPoint { bucket: number; count: number }
+```
+
+### UniquesView
+
+```ts
+// signature
+interface UniquesView { dau: number; wau: number; mau: number; trend: Array<{ bucket: number; uniques: number }> }
+```
+
+### FunnelStep
+
+```ts
+// signature
+interface FunnelStep { name: string; count: number; rate: number }
+```
+
+### RetentionCohort
+
+```ts
+// signature
+interface RetentionCohort { cohort: number; size: number; retained: number[] }
+```
+
+### DistributionBin
+
+```ts
+// signature
+interface DistributionBin { upper: number; count: number }
+```
+
+### DistributionView
+
+```ts
+// signature
+interface DistributionView { bins: DistributionBin[]; overflow: number; count: number; sum: number }
+```
+
+### PaginationOpts
+
+```ts
+// signature
+interface PaginationOpts { numItems: number; cursor: string | null }
+```
+
+### EventPage
+
+```ts
+// signature
+interface EventPage { page: EventView[]; isDone: boolean; continueCursor: string }
+```
+
+### EventView
+
+```ts
+// signature
 interface EventView {
   _id: string;
   _creationTime: number;
@@ -238,12 +363,43 @@ interface EventView {
   sessionRef?: string;
   props: Props;
   ts: number;
-  seq: number;
+  seq: number; // events the session had before this one; 0 without sessionRef
   dedupeKey?: string;
 }
-interface EventPage {
-  page: EventView[];
-  isDone: boolean;
-  continueCursor: string;
-}
 ```
+
+## Other entry points
+
+### convex.config default export
+
+`@vllnt/convex-analytics/convex.config` exports the component definition (named
+`"analytics"`). It mounts three child components: `@convex-dev/aggregate` (mounted, not used),
+`@convex-dev/sharded-counter` and `@convex-dev/rate-limiter`. Mount it once per partition set;
+pass `{ name }` to mount it twice and `{ httpPrefix }` to expose the [REST API](./api-reference.md).
+
+```ts
+// convex/convex.config.ts
+import analytics from "@vllnt/convex-analytics/convex.config";
+import { defineApp } from "convex/server";
+
+const app = defineApp();
+app.use(analytics);
+export default app;
+```
+
+### register
+
+```ts
+// signature
+register(t: TestConvex<SchemaDefinition<GenericSchema, boolean>>, name?: string): void
+```
+
+From `@vllnt/convex-analytics/test`. Registers the component with a `convex-test` instance under
+`name` (default `"analytics"`) and its child components under `<name>/aggregate`,
+`<name>/shardedCounter` and `<name>/rateLimiter`. The entry is TypeScript source that uses
+`import.meta.glob`, so run it under Vitest. See the README [Testing](../README.md#testing) section.
+
+### test default export
+
+The default export of `@vllnt/convex-analytics/test` is `{ register, schema, modules }`:
+`schema` and `modules` let you call `t.registerComponent` yourself.

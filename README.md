@@ -1,66 +1,35 @@
-<!-- Badges -->
-
-[![convex-component](https://img.shields.io/badge/convex-component-EE342F.svg)](https://www.convex.dev/components)
-[![npm](https://img.shields.io/npm/v/@vllnt/convex-analytics.svg)](https://www.npmjs.com/package/@vllnt/convex-analytics)
-[![CI](https://github.com/vllnt/convex-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/vllnt/convex-analytics/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/@vllnt/convex-analytics.svg)](LICENSE)
-
 # @vllnt/convex-analytics
 
-A generic, configurable, embedded analytics component for Convex — any event,
-any dimension, any domain — with rollup-on-write for reactive aggregate reads.
+TypeScript Convex component for event analytics: track events, roll up counts on write, and query metrics, breakdowns, time series, funnels and retention.
 
-```ts
-import { AnalyticsClient } from "@vllnt/convex-analytics";
-import { components } from "./_generated/api";
+## For coding agents
 
-const analytics = new AnalyticsClient(components.analytics, {
-  dimensions: ["plan", "country"], // prop keys to roll up on
-});
+Docs for the installed version are in `node_modules/@vllnt/convex-analytics/`: `docs/`, `llms.txt`, `CHANGELOG.md` and the TypeScript `src/`.
+Every signature is in [docs/client-sdk.md](docs/client-sdk.md); every error is in [Errors and fixes](#errors-and-fixes).
 
-await analytics.track(ctx, "signup", {
-  subjectRef: userId,
-  props: { plan: "pro", country: "FR" },
-});
-const byPlan = await analytics.top(ctx, "signup", "plan"); // [{ value: "pro", count: 1 }]
-```
+## When to use
 
-## Features
+- Use it when a Convex app needs event counts, breakdowns and time series that its own queries read reactively.
+- Use it when you know the props you slice by up front, so counts can be rolled up as each event is written.
+- Use it when you also need funnels, retention cohorts, distinct-subject counts or histograms over retained raw events.
+- Do not use it when you need cookie-consent state and consent-gated tracking in a React app: use [`@vllnt/analytics`](https://oss.vllnt.com/packages/analytics).
+- Do not use it when you need a per-subject activity feed read back event by event: use [`@vllnt/convex-events`](https://oss.vllnt.com/packages/convex-events).
+- Do not use it when you need A/B variant assignment with exposure tracking: use [`@vllnt/convex-experiments`](https://oss.vllnt.com/packages/convex-experiments).
 
-- **Generic events** — free-string event name, opaque `subjectRef` / `sessionRef`, host-typed `props`.
-- **Host-declared dimensions** — you pass the prop keys to roll up on; nothing is hardcoded.
-- **Rollup-on-write** — counts are incremented as events land. Unfiltered lifetime `metric` reads a fixed-shard counter; ranged/filtered metrics, breakdowns, and time series scan matching rollup rows, not constant-time results.
-- **Rich verb set** — `metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `distribution`, plus paginated raw `list`.
-- **Configurable** — `scope`, `dimensions`, `granularities`, `retentionDays`, `sampleRate`; sensible defaults, zero config required.
-- **Per-session rate limiting + dedupe + sampling** built into `track`.
-- **Opt-in web preset** — `@vllnt/convex-analytics/web` adds web dimensions + UA/geo helpers when you want them.
-- **Optional React hooks** — `@vllnt/convex-analytics/react` for reactive aggregate reads.
-- **Zero hardcoded domain** — no `v.any()`, no baked-in web fields; the host owns meaning and auth.
-
-## Generic core vs web preset
-
-The core is domain-neutral: it knows nothing about web, mobile, or any vertical.
-Web analytics — pageview dimensions (`path`, `referrer`, `device`, `browser`, `os`,
-`country`, UTM) plus `parseUserAgent` / `geoFromHeaders` / `trackPageview` helpers —
-lives in the opt-in `@vllnt/convex-analytics/web` preset. You turn it on by passing
-`webDimensions` to the client's `dimensions` config; otherwise the core ships no web
-fields. See [docs/web-preset.md](docs/web-preset.md).
-
-## Installation
+## Install
 
 ```bash
 npm install @vllnt/convex-analytics
 ```
 
-Requires `convex@^1.45.0` as a peer dependency; React is optional. The command installs
-the latest stable release; `@canary` follows `main`.
+This installs the latest stable release; `@canary` follows `main`.
 
-## Usage
+## Quick start
 
 ```ts
 // convex/convex.config.ts
-import { defineApp } from "convex/server";
 import analytics from "@vllnt/convex-analytics/convex.config";
+import { defineApp } from "convex/server";
 
 const app = defineApp();
 app.use(analytics);
@@ -68,192 +37,476 @@ export default app;
 ```
 
 ```ts
-// convex/analytics.ts — track + read, server-side
+// convex/analytics.ts
 import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
 import { components } from "./_generated/api";
+import { mutation, query } from "./_generated/server";
 
-type MyProps = { plan?: string; country?: string };
-
-const analytics = new AnalyticsClient<MyProps>(components.analytics, {
-  dimensions: ["plan", "country"],
-  granularities: ["day"],
+const analytics = new AnalyticsClient(components.analytics, {
+  dimensions: ["plan"], // props keys to roll up on
 });
 
-await analytics.track(ctx, "signup", {
-  subjectRef: userId,
-  props: { plan: "pro" },
+export const signup = mutation({
+  args: { userId: v.string(), plan: v.string() },
+  returns: v.union(v.literal("tracked"), v.literal("dropped"), v.literal("duplicate")),
+  handler: async (ctx, { userId, plan }) =>
+    await analytics.track(ctx, "signup", { subjectRef: userId, props: { plan } }),
 });
-const total = await analytics.metric(ctx, "signup");
+
+export const signupsByPlan = query({
+  args: {},
+  returns: v.array(v.object({ value: v.string(), count: v.number() })),
+  handler: async (ctx) => await analytics.top(ctx, "signup", "plan"),
+});
 ```
 
-## Config
+Run `npx convex dev` once to generate `components.analytics`. After one `signup` with
+`plan: "pro"`, `signupsByPlan` returns `[{ value: "pro", count: 1 }]`. The component never
+reads auth: the host decides who may call these functions and what `subjectRef` is.
 
-Passed to the `AnalyticsClient` constructor. All optional — the defaults work with zero config.
-
-| Option          | Type                              | Default     | Purpose                                                                             |
-| --------------- | --------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
-| `scope`         | `string`                          | `"default"` | Multi-tenant partition; isolates one tenant's data.                                 |
-| `dimensions`    | `string[]`                        | `[]`        | Prop keys to roll up on (drives rollup-on-write). Empty = count by event name only. |
-| `granularities` | `("minute" \| "hour" \| "day")[]` | `["day"]`   | Rollup bucket sizes (`minute` for short live windows). Keep `"day"`: see below.     |
-| `retentionDays` | `number`                          | `90`        | Raw-event TTL in days (rollups are kept forever). Applied via `configure`.          |
-| `sampleRate`    | `number`                          | `1`         | Fraction `0..1` of events to keep at ingest.                                        |
-| `sessionIdleMs` | `number`                          | `1800000`   | Idle timeout before a session is closed. Applied via `configure`.                   |
-
-`scope`, `dimensions`, `granularities`, and `sampleRate` apply per call from the client.
-`top`, and `metric` with a `range` or `where`, read only `day` rollups: if `granularities`
-leaves out `"day"`, they return `[]` and `0`.
-`retentionDays`, `sampleRate`, and `sessionIdleMs` are persisted for the prune/close-sessions
-crons by calling `analytics.configure(ctx, { ... })` once.
-`TProps` is compile-time typing only; validate untrusted props in host wrappers. There is no
-`propsValidator` constructor option.
-
-When `sessionRef` is supplied, ingest uses a token bucket per `(scope, sessionRef)`:
-100 events/minute refill, capacity 10. These limits are currently fixed, not client config.
-Exhaustion and sampling both return `"dropped"`; without `sessionRef`, this limiter is skipped.
+[![npm](https://img.shields.io/npm/v/@vllnt/convex-analytics.svg)](https://www.npmjs.com/package/@vllnt/convex-analytics)
+[![CI](https://github.com/vllnt/convex-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/vllnt/convex-analytics/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/@vllnt/convex-analytics.svg)](LICENSE)
 
 ## API
 
-| Verb                                     | Kind     | Purpose                                                                                                  |
-| ---------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| `track(ctx, name, opts)`                 | mutation | Ingest an event; rollup-on-write + raw event + counter. Returns `"tracked" \| "dropped" \| "duplicate"`. |
-| `metric(ctx, name, opts)`                | query    | Total count over a range, optionally filtered by a dimension value.                                      |
-| `top(ctx, name, dimension, opts)`        | query    | Top values of a dimension (breakdown).                                                                   |
-| `timeseries(ctx, name, opts)`            | query    | Bucketed counts over a range.                                                                            |
-| `uniques(ctx, opts)`                     | query    | DAU / WAU / MAU from subjects.                                                                           |
-| `funnel(ctx, steps, opts)`               | query    | Ordered step conversion, keyed by `subjectRef`.                                                          |
-| `retention(ctx, opts)`                   | query    | Cohort return rates by first-seen period.                                                                |
-| `distribution(ctx, name, measure, opts)` | query    | Histogram of a numeric measure over declared buckets + overflow (with `count` / `sum`).                  |
-| `list(ctx, name, paginationOpts, opts)`  | query    | Paginated raw events, newest first.                                                                      |
-| `configure(ctx, opts)`                   | mutation | Persist cron-relevant config (retention / sampling / idle).                                              |
+Full reference: [docs/client-sdk.md](docs/client-sdk.md) (main entry, `./convex.config`,
+`./test`), [docs/web-preset.md](docs/web-preset.md) (`./web`), [docs/react.md](docs/react.md)
+(`./react`), [docs/api-reference.md](docs/api-reference.md) (REST routes).
 
-`timeseries` and `uniques` require `range` and `granularity`; `funnel` requires `range`;
-`retention` requires `cohortRange` and `periods`; `distribution` requires `buckets`.
-`list` requires pagination options. See [docs/client-sdk.md](docs/client-sdk.md) for exact types.
+| Export | Import from | What it does |
+| --- | --- | --- |
+| [`AnalyticsClient`](docs/client-sdk.md#analyticsclient) | `@vllnt/convex-analytics` | Host client: `new AnalyticsClient<TProps>(components.analytics, config?)` |
+| [`track(ctx, name, opts?)`](docs/client-sdk.md#track) | `AnalyticsClient` method, mutation | Store one event and bump its rollups; returns `"tracked"`, `"dropped"` or `"duplicate"` |
+| [`metric(ctx, name, opts?)`](docs/client-sdk.md#metric) | `AnalyticsClient` method, query | Event count, optionally in a `range` and filtered by one dimension value |
+| [`top(ctx, name, dimension, opts?)`](docs/client-sdk.md#top) | `AnalyticsClient` method, query | Values of one dimension ranked by count |
+| [`timeseries(ctx, name, opts)`](docs/client-sdk.md#timeseries) | `AnalyticsClient` method, query | Counts per minute, hour or day bucket |
+| [`uniques(ctx, opts)`](docs/client-sdk.md#uniques) | `AnalyticsClient` method, query | Distinct subjects: `dau`, `wau`, `mau`, `trend` |
+| [`funnel(ctx, steps, opts)`](docs/client-sdk.md#funnel) | `AnalyticsClient` method, query | Ordered step conversion per `subjectRef` |
+| [`retention(ctx, opts)`](docs/client-sdk.md#retention) | `AnalyticsClient` method, query | Cohorts by first-seen bucket |
+| [`distribution(ctx, name, measure, opts)`](docs/client-sdk.md#distribution) | `AnalyticsClient` method, query | Histogram of a numeric prop |
+| [`list(ctx, name, paginationOpts, opts?)`](docs/client-sdk.md#list) | `AnalyticsClient` method, query | One page of raw events, newest first |
+| [`configure(ctx, opts?)`](docs/client-sdk.md#configure) | `AnalyticsClient` method, mutation | Store `retentionDays` / `sessionIdleMs` for the crons |
+| [`AnalyticsConfig`](docs/client-sdk.md#analyticsconfig) | `@vllnt/convex-analytics` (type) | Constructor options |
+| [`TrackOpts`](docs/client-sdk.md#trackopts) | `@vllnt/convex-analytics` (type) | Options of `track` |
+| [`TrackResult`](docs/client-sdk.md#trackresult) | `@vllnt/convex-analytics` (type) | `"tracked" \| "dropped" \| "duplicate"` |
+| [`Scalar`](docs/client-sdk.md#scalar) | `@vllnt/convex-analytics` (type) | `string \| number \| boolean \| null` |
+| [`Props`](docs/client-sdk.md#props) | `@vllnt/convex-analytics` (type) | `Record<string, Scalar>` |
+| [`Granularity`](docs/client-sdk.md#granularity) | `@vllnt/convex-analytics`, `./react` (type) | `"minute" \| "hour" \| "day"` |
+| [`Range`](docs/client-sdk.md#range) | `@vllnt/convex-analytics`, `./react` (type) | `{ from?, to? }` in epoch milliseconds |
+| [`Where`](docs/client-sdk.md#where) | `@vllnt/convex-analytics`, `./react` (type) | `{ dim, val }`: one dimension equals one value |
+| [`TopRow`](docs/client-sdk.md#toprow) | `@vllnt/convex-analytics`, `./react` (type) | `{ value, count }` |
+| [`TimeseriesPoint`](docs/client-sdk.md#timeseriespoint) | `@vllnt/convex-analytics`, `./react` (type) | `{ bucket, count }` |
+| [`UniquesView`](docs/client-sdk.md#uniquesview) | `@vllnt/convex-analytics`, `./react` (type) | `{ dau, wau, mau, trend }` |
+| [`FunnelStep`](docs/client-sdk.md#funnelstep) | `@vllnt/convex-analytics` (type) | `{ name, count, rate }` |
+| [`RetentionCohort`](docs/client-sdk.md#retentioncohort) | `@vllnt/convex-analytics` (type) | `{ cohort, size, retained }` |
+| [`DistributionBin`](docs/client-sdk.md#distributionbin) | `@vllnt/convex-analytics` (type) | `{ upper, count }` |
+| [`DistributionView`](docs/client-sdk.md#distributionview) | `@vllnt/convex-analytics` (type) | `{ bins, overflow, count, sum }` |
+| [`PaginationOpts`](docs/client-sdk.md#paginationopts) | `@vllnt/convex-analytics` (type) | `{ numItems, cursor }` |
+| [`EventPage`](docs/client-sdk.md#eventpage) | `@vllnt/convex-analytics` (type) | `{ page, isDone, continueCursor }` |
+| [`EventView`](docs/client-sdk.md#eventview) | `@vllnt/convex-analytics` (type) | One raw event returned by `list` |
+| [`default` (component definition)](docs/client-sdk.md#convexconfig-default-export) | `@vllnt/convex-analytics/convex.config` | Pass to `app.use(...)` |
+| [`register`](docs/client-sdk.md#register) | `@vllnt/convex-analytics/test` | Mount the component and its child components in `convex-test` |
+| [`default` (test helpers)](docs/client-sdk.md#test-default-export) | `@vllnt/convex-analytics/test` | `{ register, schema, modules }` |
+| [`webDimensions`](docs/web-preset.md#webdimensions) | `@vllnt/convex-analytics/web` | The nine web prop keys to pass as `dimensions` |
+| [`WebDimension`](docs/web-preset.md#webdimension) | `@vllnt/convex-analytics/web` (type) | One key of `webDimensions` |
+| [`parseUserAgent`](docs/web-preset.md#parseuseragent) | `@vllnt/convex-analytics/web` | `User-Agent` to `{ device, browser, os }` |
+| [`UserAgentInfo`](docs/web-preset.md#useragentinfo) | `@vllnt/convex-analytics/web` (type) | Result of `parseUserAgent` |
+| [`geoFromHeaders`](docs/web-preset.md#geofromheaders) | `@vllnt/convex-analytics/web` | Cloudflare / Vercel headers to `{ country, region?, city? }` |
+| [`GeoInfo`](docs/web-preset.md#geoinfo) | `@vllnt/convex-analytics/web` (type) | Result of `geoFromHeaders` |
+| [`trackPageview`](docs/web-preset.md#trackpageview) | `@vllnt/convex-analytics/web` | Build web props and `track` a `"page_view"` event |
+| [`TrackPageviewOpts`](docs/web-preset.md#trackpageviewopts) | `@vllnt/convex-analytics/web` (type) | Options of `trackPageview` |
+| [`Utm`](docs/web-preset.md#utm) | `@vllnt/convex-analytics/web` (type) | `{ source?, medium?, campaign? }` |
+| [`useMetric`](docs/react.md#usemetric) | `@vllnt/convex-analytics/react` | Reactive `metric` through a host query |
+| [`useTop`](docs/react.md#usetop) | `@vllnt/convex-analytics/react` | Reactive `top` through a host query |
+| [`useTimeseries`](docs/react.md#usetimeseries) | `@vllnt/convex-analytics/react` | Reactive `timeseries` through a host query |
+| [`useUniques`](docs/react.md#useuniques) | `@vllnt/convex-analytics/react` | Reactive `uniques` through a host query |
+| [`MetricArgs`](docs/react.md#metricargs) | `@vllnt/convex-analytics/react` (type) | Expected args of the host `metric` query |
+| [`TopArgs`](docs/react.md#topargs) | `@vllnt/convex-analytics/react` (type) | Expected args of the host `top` query |
+| [`TimeseriesArgs`](docs/react.md#timeseriesargs) | `@vllnt/convex-analytics/react` (type) | Expected args of the host `timeseries` query |
+| [`UniquesArgs`](docs/react.md#uniquesargs) | `@vllnt/convex-analytics/react` (type) | Expected args of the host `uniques` query |
 
-### Optional REST access
+## Common tasks
 
-Expose the routes by mounting with `app.use(analytics, { httpPrefix: "/analytics" })`.
-Then configure keys from a trusted host mutation (not a public unauthenticated endpoint):
+Count one dimension value in a date range, as a total and per day:
 
 ```ts
-await ctx.runMutation(components.analytics.mutations.configSet, {
-  scope: "default",
-  key: "apiKeys",
-  value: JSON.stringify([apiKey]), // host-provided secret; never ship it to the browser
+// convex/reports.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
+import { components } from "./_generated/api";
+import { query } from "./_generated/server";
+
+const analytics = new AnalyticsClient(components.analytics, { dimensions: ["plan"] });
+
+export const proSignups = query({
+  args: { from: v.number(), to: v.number() },
+  returns: v.object({
+    total: v.number(),
+    daily: v.array(v.object({ bucket: v.number(), count: v.number() })),
+  }),
+  handler: async (ctx, { from, to }) => {
+    const range = { from, to };
+    const where = { dim: "plan", val: "pro" };
+    const total = await analytics.metric(ctx, "signup", { range, where });
+    const daily = await analytics.timeseries(ctx, "signup", { granularity: "day", range, where });
+    return { total, daily };
+  },
 });
+```
+
+Count an outcome once, even when the mutation is retried, with your own `dedupeKey`:
+
+```ts
+// convex/games.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
+import { components } from "./_generated/api";
+import { mutation } from "./_generated/server";
+
+const analytics = new AnalyticsClient(components.analytics, { dimensions: ["puzzleId"] });
+
+export const solved = mutation({
+  args: { userId: v.string(), puzzleId: v.string(), seconds: v.number() },
+  returns: v.boolean(),
+  handler: async (ctx, { userId, puzzleId, seconds }) => {
+    const result = await analytics.track(ctx, "solved", {
+      subjectRef: userId,
+      props: { puzzleId, seconds },
+      dedupeKey: `${puzzleId}:${userId}`,
+    });
+    return result === "tracked";
+  },
+});
+```
+
+Funnel, retention and a histogram of a numeric prop:
+
+```ts
+// convex/insights.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
+import { components } from "./_generated/api";
+import { query } from "./_generated/server";
+
+const analytics = new AnalyticsClient(components.analytics);
+
+export const insights = query({
+  args: { from: v.number(), to: v.number() },
+  returns: v.object({ checkoutRate: v.number(), cohorts: v.number(), underOneMinute: v.number() }),
+  handler: async (ctx, { from, to }) => {
+    const range = { from, to };
+    const steps = await analytics.funnel(ctx, ["view", "add_to_cart", "checkout"], { range });
+    const cohorts = await analytics.retention(ctx, { cohortRange: range, periods: 7 });
+    const times = await analytics.distribution(ctx, "solved", "seconds", {
+      buckets: [60, 300, 900],
+      range,
+    });
+    return {
+      checkoutRate: steps.at(-1)?.rate ?? 0,
+      cohorts: cohorts.length,
+      underOneMinute: times.bins[0]?.count ?? 0,
+    };
+  },
+});
+```
+
+Read aggregates reactively in React: re-export a host query, then pass it to a hook:
+
+```ts
+// convex/dashboard.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
+import { components } from "./_generated/api";
+import { query } from "./_generated/server";
+
+const analytics = new AnalyticsClient(components.analytics);
+
+export const metric = query({
+  args: { name: v.string() },
+  returns: v.number(),
+  handler: async (ctx, { name }) => await analytics.metric(ctx, name),
+});
+```
+
+```tsx
+// src/SignupCount.tsx
+import { useMetric } from "@vllnt/convex-analytics/react";
+
+import { api } from "../convex/_generated/api";
+
+export function SignupCount() {
+  const count = useMetric(api.dashboard.metric, { name: "signup" });
+  return <p>{count === undefined ? "Loading" : `${String(count)} signups`}</p>;
+}
+```
+
+Track page views from an HTTP action with the web preset:
+
+```ts
+// convex/http.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { trackPageview, webDimensions } from "@vllnt/convex-analytics/web";
+import { httpRouter } from "convex/server";
+
+import { components } from "./_generated/api";
+import { httpAction } from "./_generated/server";
+
+const analytics = new AnalyticsClient(components.analytics, { dimensions: [...webDimensions] });
+
+const http = httpRouter();
+http.route({
+  path: "/pageview",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = (await request.json()) as { path: string; referrer?: string };
+    await trackPageview(analytics, ctx, {
+      path: body.path,
+      referrer: body.referrer,
+      ua: request.headers.get("user-agent") ?? undefined,
+      headers: request.headers,
+    });
+    return new Response(null, { status: 204 });
+  }),
+});
+export default http;
+```
+
+Set raw-event retention and the session idle timeout for the crons (run once, for example
+with `npx convex run setup:configureAnalytics`):
+
+```ts
+// convex/setup.ts
+import { AnalyticsClient } from "@vllnt/convex-analytics";
+import { v } from "convex/values";
+
+import { components } from "./_generated/api";
+import { internalMutation } from "./_generated/server";
+
+const analytics = new AnalyticsClient(components.analytics, {
+  retentionDays: 30,
+  sessionIdleMs: 15 * 60 * 1000,
+});
+
+export const configureAnalytics = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    await analytics.configure(ctx);
+    return null;
+  },
+});
+
+export const setApiKey = internalMutation({
+  args: { key: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { key }) => {
+    await ctx.runMutation(components.analytics.mutations.configSet, {
+      scope: "default",
+      key: "apiKeys",
+      value: JSON.stringify([key]),
+    });
+    return null;
+  },
+});
+```
+
+Expose the REST routes: mount with an `httpPrefix`, store a key with `setApiKey` above, then
+call a route with that key ([REST API](docs/api-reference.md)):
+
+```ts
+// convex/convex.config.ts
+import analytics from "@vllnt/convex-analytics/convex.config";
+import { defineApp } from "convex/server";
+
+const app = defineApp();
+app.use(analytics, { httpPrefix: "/analytics" });
+export default app;
 ```
 
 ```bash
 curl -H "x-api-key: $ANALYTICS_API_KEY" \
-  "https://your-deployment.convex.site/analytics/metric?name=signup"
+  "https://<deployment>.convex.site/analytics/metric?name=signup"
 ```
 
-There is no client `configSet` method. Keys are stored per scope; missing/unconfigured/invalid
-keys return HTTP 401. See [docs/api-reference.md](docs/api-reference.md).
+Re-derive rollups after changing `dimensions` (`backfill` is internal to the component, so
+run it from the CLI; it handles one event name per call):
 
-## What it serves
-
-The Convex-native, authoritative in-app aggregate layer — predefined-dimension rollups served
-**reactively** from pre-aggregated rows. It complements a product-analytics warehouse; it doesn't replace one.
-Declare the dimensions you'll query; read cost still grows with matching buckets and values; ad-hoc or
-retroactive questions over **non-declared** dimensions, or beyond the raw-event retention window,
-are an export concern. `metric` / `top` / `timeseries` read pre-aggregated rollups (kept forever);
-`funnel` / `distribution` read raw events in range (index-backed, bounded, TTL-pruned) and `retention`
-reads per-subject first/last-seen rows.
-
-## Web preset
-
-```ts
-import { AnalyticsClient } from "@vllnt/convex-analytics";
-import { webDimensions, trackPageview } from "@vllnt/convex-analytics/web";
-
-const analytics = new AnalyticsClient(components.analytics, {
-  dimensions: [...webDimensions], // readonly tuple; `dimensions` takes a string[]
-});
-
-await trackPageview(analytics, ctx, {
-  path: "/pricing",
-  ua: request.headers.get("user-agent") ?? undefined,
-  headers: request.headers,
-});
+```bash
+npx convex run --component analytics internal_mutations:backfill \
+  '{"scope":"default","name":"signup","dimensions":["plan"],"granularities":["day"]}'
 ```
 
-`webDimensions` opts the rollups into `path` / `referrer` / `device` / `browser` / `os` /
-`country` / UTM; `parseUserAgent` and `geoFromHeaders` build those props from a request.
-See [docs/web-preset.md](docs/web-preset.md).
+## Errors and fixes
 
-## React
+Input errors are a `ConvexError` whose `data` is `{ code, message }`; REST routes return
+them as `400 { "error", "code" }`. Branch on `data.code`.
 
-```tsx
-import { useMetric, useTop } from "@vllnt/convex-analytics/react";
-import { api } from "../convex/_generated/api";
+| Error | Cause | Fix |
+| --- | --- | --- |
+| `EMPTY_STRING` | `scope`, `name`, `subjectRef`, `sessionRef`, `dedupeKey`, a `dimensions` entry, or a `configSet` `key` is `""` | Omit the optional field instead of passing `""` |
+| `INVALID_TIMESTAMP` | `ts`, `range.from` or `range.to` is `NaN` or infinite (REST: a blank or non-numeric `from` / `to`) | Pass epoch milliseconds as finite numbers |
+| `INVALID_SAMPLE_RATE` | `sampleRate` is not a number from 0 to 1 | Use a value in `[0, 1]` |
+| `INVALID_PROP_KEY` | A `props` key is not printable ASCII, is over 1024 characters, or starts with `$` (checked by `POST /track`; Convex rejects such keys first on function calls) | Rename the key |
+| `INVALID_PROP_VALUE` | A `props` value is `NaN`, infinite, an object or an array | Send flat scalar values only |
+| `INVALID_COUNT` | `limit`, `periods` or `numItems` is not a positive integer | Pass an integer of 1 or more |
+| `INVALID_CURSOR` | A `list` cursor was not returned by `list` | Pass `null` or the previous `continueCursor` |
+| `INVALID_BUCKETS` | A `distribution` bucket bound is `NaN` or infinite | Pass finite numbers |
+| `INVALID_CONFIG` | `retentionDays` or `sessionIdleMs` passed to `configure` is not a positive finite number | Pass a number above 0 |
+| `Funnel requires at least 2 steps` | `funnel` got fewer than 2 steps (a plain `Error`, not a `ConvexError`) | Pass 2 or more event names |
+| `backfill requires at most 50000 retained events; existing rollups were preserved` | `backfill` found more than 50,000 raw events for the name (plain `Error`) | Wait for `prune` to remove old events or lower `retentionDays`, then retry |
+| Convex argument validation error | An argument does not match the function validator, for example a nested `props` value or an unknown granularity | Match the types in [docs/client-sdk.md](docs/client-sdk.md) |
+| 401 `Missing x-api-key header` | REST request without `x-api-key` | Send the header |
+| 401 `API keys not configured` | No `apiKeys` config row for the request's `scope` | Store keys with `configSet` for that scope |
+| 401 `Invalid API key` | The key is not in the scope's `apiKeys` list | Send a stored key or add it |
+| 500 `API keys misconfigured` | The stored `apiKeys` value is not a JSON array of strings | Store `JSON.stringify(["key"])` |
+| 400 `Invalid JSON body` | `POST /track` body is not JSON | Send a JSON body |
+| 400 `Body must be a JSON object` | `POST /track` body is an array, `null` or a scalar | Send a JSON object |
+| 400 `name is required` | `POST /track` without a non-empty string `name` | Add `name` |
+| 400 `dimensions (string[]) is required` | `POST /track` without a `dimensions` string array | Add `"dimensions": []` or your keys |
+| 400 `props must be a flat object of scalar values` | `POST /track` `props` is not an object | Send an object of scalars |
+| 400 `granularities must be an array of minute, hour, or day` | `POST /track` `granularities` has another value | Use `minute`, `hour` or `day` |
+| 400 `name parameter required` | `GET /metric` or `/top` or `/timeseries` without `name` | Add `?name=` |
+| 400 `dimension parameter required` | `GET /top` without `dimension` | Add `&dimension=` |
+| 400 `granularity must be minute, hour, or day` | `GET /timeseries` or `/uniques` with another `granularity` | Use `minute`, `hour` or `day` |
 
-const signups = useMetric(api.analytics.metric, { name: "signup" });
-const byPlan = useTop(api.analytics.top, { name: "signup", dimension: "plan" });
-```
+## Limits and gotchas
 
-Thin reactive wrappers over the host's re-exported query refs (`metric`, `top`, `timeseries`,
-`uniques`). `react` is an optional peer dep; backend-only consumers pull no React.
+- `track` returns `"dropped"` (no error) when sampled out, or when a `sessionRef` exceeds its
+  rate limit: a token bucket per `(scope, sessionRef)` refilling 100 events per minute with
+  capacity 10. The limit is fixed. Events without `sessionRef` skip the limiter.
+- Only keys listed in `dimensions` are rolled up; other props are stored on the raw event but
+  cannot be read with `metric` / `top` / `timeseries`. Changing `dimensions` does not rewrite
+  past rollups: run `backfill`, which can only use raw events not yet pruned. Rollups are kept
+  forever; raw events (for `funnel`, `distribution`, `list`, `backfill`) only for `retentionDays`.
+- Rollup values are strings: `true`, `1` and `null` become `"true"`, `"1"` and `"null"`, so
+  `top` returns strings and `where: { dim, val: 1 }` also matches the string `"1"`.
+- `top`, and `metric` with a `range` or `where`, read only `day` rollups: if `granularities`
+  leaves out `"day"` they return `[]` and `0`. `timeseries` at a granularity you do not write
+  returns `[]`. An empty `granularities` array means `["day"]`.
+- `timeseries` returns only buckets that have events; it does not fill gaps with zeros.
+- `metric` without `range` and `where` reads a lifetime counter (16 shards) that `prune` and
+  `backfill` never change.
+- `top`: `limit` defaults to 20 and is capped at 100. It reads every `day` rollup row of the
+  event name in the range (all dimensions), so its cost grows with the number of dimension values.
+- `metric`, `top`, `timeseries` and `uniques` collect all matching rows; very wide ranges can hit
+  Convex's per-function read limits.
+- `funnel` reads at most 10,000 events per step, oldest first, and skips events without
+  `subjectRef`. Default range: the 30 days before `range.to` (or now).
+- `retention` reads at most 10,000 subjects and caps `periods` at 30. A subject counts only in
+  the period of its last event, not in every period it returned.
+- `uniques` counts each subject once, at its last event: `wau` / `mau` are subjects last seen
+  within 7 / 30 days before `range.to`, `dau` is the mean of the `trend` buckets, and a subject
+  seen again after `range.to` is not counted. Default range: the 30 days before `range.to`.
+- `distribution` reads at most 50,000 events, oldest first, then applies `where`; non-numeric
+  measure values are ignored. Default `range.from` is 0.
+- `list` has no page-size cap (`numItems` is read as given); events that share the exact `ts`
+  at a page boundary can be skipped.
+- `retentionDays` (default 90) and `sessionIdleMs` (default 30 minutes) take effect only after
+  `configure`; until then the crons use the defaults. `configure` also stores `sampleRate`,
+  but nothing reads it: `track` uses the client's `sampleRate`.
+- `dedupeKey` matches only retained raw events: after `prune` deletes the first event, the same
+  key tracks again.
+- `prune` runs every 24 hours and `closeSessions` every 30 minutes; each deletes or closes at
+  most 500 rows per run and reschedules itself, and they page through scopes 100 at a time.
+- `backfill` reads at most 50,001 events and throws if there are more than 50,000.
+- REST routes exist only when the component is mounted with `httpPrefix` (it must start with
+  `/`). `GET /metric` ignores `dim` without `val` (and the reverse). `POST /track` ignores a
+  `ts`, `subjectRef`, `sessionRef`, `dedupeKey` or `sampleRate` of the wrong type instead of
+  rejecting it.
+- `@convex-dev/aggregate` is mounted as a child component but nothing writes or reads it.
+- Peer warnings: `@convex-dev/aggregate` pins `convex-helpers@0.1.128` (peer `convex ^1.46.0`)
+  and `@convex-dev/rate-limiter` pulls the latest `convex-helpers` (0.1.137: peer
+  `convex ^1.49.0`), so installs with `convex` below 1.49 warn although this package's peer is
+  `^1.45.0`.
+- Importing `@vllnt/convex-analytics/convex.config` in plain Node fails with
+  `ERR_MODULE_NOT_FOUND` inside `@convex-dev/batch-worker`; the Convex CLI bundler loads it fine.
+- `@vllnt/convex-analytics/test` is TypeScript source that calls `import.meta.glob`: run it
+  under Vitest (or Vite) with `convex-test`.
 
-## Security
+## Compatibility
 
-- Auth-agnostic mount — the host gates access and passes opaque `subjectRef` / `sessionRef` in.
-- Tables are sandboxed; the host reaches them only through the exported functions.
-- REST endpoints require an `x-api-key` header, compared timing-safe.
-- Invalid input (empty strings, `NaN` / infinite timestamps, non-scalar props) is rejected with a typed `ConvexError`; see [docs/api-reference.md](docs/api-reference.md#input-errors).
-- The component never logs event data. Props and refs are stored as given, so keep personal data out of them (the web preset stores `path`, `referrer`, and geo as received).
-
-See [docs/architecture.md](docs/architecture.md).
+- `convex`: peer `^1.45.0`, required. `convex` 1.45.0 itself requires Node 20 or later.
+- `react`: peer `>=18.0.0`, optional; only `@vllnt/convex-analytics/react` uses it.
+- Node: `engines` is `>=18`.
+- ESM only; there is no CommonJS build.
+- The component's functions run in Convex's default runtime. `./web` helpers are pure
+  functions with no dependencies. `./react` hooks need a `ConvexProvider`.
+- CI type-checks the README and docs examples against `convex` 1.45.0.
 
 ## Testing
+
+Run the repository's tests:
 
 ```bash
 pnpm test
 ```
 
+Test host code that uses the component with `convex-test` under Vitest:
+
 ```ts
+// convex/analytics.test.ts
 import analyticsTest from "@vllnt/convex-analytics/test";
 import { convexTest } from "convex-test";
+import { expect, test } from "vitest";
 
-const t = convexTest(hostSchema, hostModules);
-analyticsTest.register(t);
+import { api } from "./_generated/api";
+import schema from "./schema";
+
+const modules = import.meta.glob("./**/*.ts");
+
+test("signups are counted by plan", async () => {
+  const t = convexTest(schema, modules);
+  analyticsTest.register(t);
+  await t.mutation(api.analytics.signup, { userId: "u1", plan: "pro" });
+  expect(await t.query(api.analytics.signupsByPlan, {})).toEqual([{ value: "pro", count: 1 }]);
+});
 ```
 
-## Documentation
+`register(t, name?)` registers the component under `name` (default `"analytics"`) and its
+child components under `<name>/aggregate`, `<name>/shardedCounter` and `<name>/rateLimiter`.
 
-[Schema](docs/schema.md) · [Client SDK](docs/client-sdk.md) · [REST API](docs/api-reference.md) ·
-[Web Preset](docs/web-preset.md) · [Multi-Product](docs/multi-product.md) ·
-[Architecture](docs/architecture.md) ·
-[`llms.txt`](llms.txt) (documentation index).
+## Security
 
-## For coding agents
+- The component reads no auth. The host gates every call and passes opaque `subjectRef` /
+  `sessionRef` strings in.
+- Component tables are sandboxed: the host reaches them only through the exported functions.
+- REST routes require an `x-api-key` header, compared against the scope's `apiKeys` config
+  with a loop that does not stop at the first differing character (it returns early only when
+  the lengths differ). Store keys from a trusted internal mutation; never ship them to a browser.
+- Invalid input is rejected with a typed `ConvexError` (see [Errors and fixes](#errors-and-fixes)).
+- The component never logs event data. Props and refs are stored as given, so keep personal
+  data out of them; the web preset stores `path`, `referrer` and geo headers as received.
 
-The npm package bundles these docs at `node_modules/@vllnt/convex-analytics/docs/`, along
-with `llms.txt`, `CHANGELOG.md` and the TypeScript `src/`. They match the installed version.
-Read them before writing code against this package.
+See [docs/architecture.md](docs/architecture.md) and [SECURITY.md](https://github.com/vllnt/convex-analytics/blob/main/SECURITY.md).
 
 ## Related packages
 
-| Package | Use it when |
-| ------- | ----------- |
-| [`@vllnt/analytics`](https://oss.vllnt.com/packages/analytics) | You need browser-side tracking with consent management and React integration. Use this component for counts stored in your Convex backend. |
-| [`@vllnt/convex-events`](https://oss.vllnt.com/packages/convex-events) | You need an append-only activity feed and event ledger per subject. Use this component for aggregate counts, breakdowns and trends. |
-| [`@vllnt/convex-experiments`](https://oss.vllnt.com/packages/convex-experiments) | You need A/B variant assignment and deduped exposure tracking. Use this component for general event metrics. |
+No public @vllnt package depends on, is tested with, or has an example using this package today.
 
 ## Contributing
 
 See [CONTRIBUTING.md](https://github.com/vllnt/convex-analytics/blob/main/CONTRIBUTING.md).
 
-## Author
+## Links
 
-Built by [bntvllnt](https://github.com/bntvllnt) · [bntvllnt.com](https://bntvllnt.com) · [X @bntvllnt](https://x.com/bntvllnt)
-
-If this is useful, [sponsor the work](https://github.com/sponsors/bntvllnt).
+- Docs and changelog: [oss.vllnt.com/packages/convex-analytics](https://oss.vllnt.com/packages/convex-analytics) · [release feed](https://oss.vllnt.com/packages/convex-analytics/rss.xml)
+- All @vllnt packages: [oss.vllnt.com](https://oss.vllnt.com) · [search packages and docs on index.vllnt.com](https://index.vllnt.com)
+- Source and issues: [GitHub](https://github.com/vllnt/convex-analytics) · [issues](https://github.com/vllnt/convex-analytics/issues) · [npm](https://www.npmjs.com/package/@vllnt/convex-analytics)
+- Questions and updates: [Discord](https://bntvllnt.com/discord) · [X @bntvllnt](https://x.com/bntvllnt)
+- Company and author: [vllnt.com](https://vllnt.com) · [bntvllnt.com](https://bntvllnt.com) · [GitHub @bntvllnt](https://github.com/bntvllnt) · [LinkedIn](https://linkedin.com/in/bntvllnt)
+- Sponsor: [GitHub Sponsors](https://github.com/sponsors/bntvllnt)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ---
 
-Part of vllnt oss: https://oss.vllnt.com
+Part of [vllnt open source](https://oss.vllnt.com) · [Package page](https://oss.vllnt.com/packages/convex-analytics) · [vllnt.com](https://vllnt.com) · Built by [bntvllnt](https://bntvllnt.com)

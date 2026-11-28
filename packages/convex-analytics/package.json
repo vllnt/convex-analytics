@@ -1,7 +1,7 @@
 {
   "name": "@vllnt/convex-analytics",
   "version": "0.1.1",
-  "description": "Generic, configurable analytics component for Convex — any event, any dimension, any domain; rollup-on-write with funnels, retention, uniques",
+  "description": "TypeScript Convex component for event analytics: track events, roll up counts on write, and query metrics, breakdowns, time series, funnels and retention.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.34.8",
@@ -44,6 +44,7 @@
     "docs/schema.md",
     "docs/api-reference.md",
     "docs/web-preset.md",
+    "docs/react.md",
     "docs/multi-product.md",
     "docs/architecture.md",
     "README.md",
@@ -117,17 +118,20 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/vllnt/convex-analytics.git"
+    "url": "https://github.com/vllnt/convex-analytics"
   },
   "keywords": [
     "convex",
     "convex-component",
+    "typescript",
     "analytics",
-    "events",
+    "event-tracking",
     "metrics",
-    "funnels",
+    "time-series",
+    "funnel",
     "retention",
-    "rollup",
-    "vllnt"
+    "rollups",
+    "web-analytics",
+    "react"
   ]
 }

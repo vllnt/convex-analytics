@@ -1,37 +1,54 @@
 # @vllnt/convex-analytics
 
-> A generic, configurable, embedded analytics component for Convex — any event, any dimension, any domain — with rollup-on-write for reactive aggregate reads. Only unfiltered lifetime metrics use fixed-shard counter reads; other aggregate reads scale with matching rollups. Mount via `app.use()` in any Convex app.
+> TypeScript Convex component for event analytics: track events, roll up counts on write, and query metrics, breakdowns, time series, funnels and retention.
 
-The component owns a standardized, typed schema (events, rollups, subjects, sessions,
-scopes, config); host data enters only as opaque refs (`subjectRef`, `sessionRef`) and
-host-typed scalar `props` — never `v.any()`. Host-declared `dimensions` drive rollup-on-write;
-the verb set (`metric`, `top`, `timeseries`, `uniques`, `funnel`, `retention`, `distribution`,
-`list`) is generic, across `minute`/`hour`/`day` granularities. Web
-analytics is the opt-in `@vllnt/convex-analytics/web` preset; reactive hooks ship as the
-optional `@vllnt/convex-analytics/react` entry. Peer dependency: `convex@^1.45.0`
-(`react@>=18` optional for the `./react` entry).
+Mount it with `app.use()` and call it from your Convex functions through `AnalyticsClient`.
+`track` stores the raw event and increments rollup rows for the props keys you declare as
+`dimensions`; `metric`, `top` and `timeseries` read those rollups, `funnel` and `distribution`
+read retained raw events, `uniques` and `retention` read per-subject first/last-seen rows, and
+`list` pages raw events. Subjects, sessions and props are opaque host data; the component reads
+no auth. Opt-in entries: `@vllnt/convex-analytics/web` (web dimensions, user-agent and geo
+helpers), `@vllnt/convex-analytics/react` (hooks), `@vllnt/convex-analytics/test` (convex-test
+helper). Peer dependency: `convex@^1.45.0` (`react@>=18` optional, for `./react` only).
 
-For coding agents: these docs ship inside the npm package at
-`node_modules/@vllnt/convex-analytics/docs/` and match the installed version, as do
-`src/` and `CHANGELOG.md`. Read them before writing code against this package.
+These docs ship inside the npm package at `node_modules/@vllnt/convex-analytics/` and match the
+installed version, as do `src/` and `CHANGELOG.md`.
+
+## When to use
+
+- Use it when a Convex app needs event counts, breakdowns and time series that its own queries read reactively.
+- Use it when you know the props you slice by up front, so counts can be rolled up as each event is written.
+- Use it when you also need funnels, retention cohorts, distinct-subject counts or histograms over retained raw events.
+- Do not use it when you need cookie-consent state and consent-gated tracking in a React app: use `@vllnt/analytics`.
+- Do not use it when you need a per-subject activity feed read back event by event: use `@vllnt/convex-events`.
+- Do not use it when you need A/B variant assignment with exposure tracking: use `@vllnt/convex-experiments`.
 
 ## Docs
 
-- [Quick Start](./docs/quick-start.md): Install, mount, track, read
-- [Client SDK](./docs/client-sdk.md): `AnalyticsClient<TProps>` config, verbs, types
-- [Schema](./docs/schema.md): events, rollups, subjects, sessions, scopes, config + indexes
-- [REST API](./docs/api-reference.md): the five generic routes (/track, /metric, /top, /timeseries, /uniques)
-- [Web Preset](./docs/web-preset.md): opt-in web dimensions + UA/geo helpers + React note
+- [API table](./README.md#api): every export of every entry point, one line each
+- [Errors and fixes](./README.md#errors-and-fixes): every error code and message, cause and fix
+- [Limits and gotchas](./README.md#limits-and-gotchas): caps, defaults, silent no-ops
+- [Quick Start](./docs/quick-start.md): install, mount, track, read
+- [Client SDK](./docs/client-sdk.md): `AnalyticsClient` config, methods, types, `convex.config`, test helper
+- [Web Preset](./docs/web-preset.md): opt-in web dimensions, user-agent and geo helpers
+- [React hooks](./docs/react.md): `useMetric`, `useTop`, `useTimeseries`, `useUniques`
+- [REST API](./docs/api-reference.md): the five routes (/track, /metric, /top, /timeseries, /uniques)
+- [Schema](./docs/schema.md): events, rollups, subjects, sessions, scopes, config and indexes
 - [Multi-Product](./docs/multi-product.md): the opaque `scope` partition
 - [Architecture](./docs/architecture.md): rollup-on-write, child components, crons
-- [Changelog](./CHANGELOG.md): version history, including unreleased changes
-
-## Ecosystem
-
-- [vllnt oss](https://oss.vllnt.com/llms.txt): index of every `@vllnt` package
+- [Changelog](./CHANGELOG.md): version history
 
 ## Optional
 
 - [Contributing](https://github.com/vllnt/convex-analytics/blob/main/CONTRIBUTING.md)
 - [Security](https://github.com/vllnt/convex-analytics/blob/main/SECURITY.md)
-- [License](./LICENSE): MIT license
+- [License](./LICENSE): MIT
+
+## Ecosystem
+
+- [Package page](https://oss.vllnt.com/packages/convex-analytics)
+- [Release feed](https://oss.vllnt.com/packages/convex-analytics/rss.xml)
+- [All @vllnt packages](https://oss.vllnt.com/llms.txt)
+- [Search vllnt packages and docs](https://index.vllnt.com)
+- [vllnt](https://vllnt.com/llms.txt)
+- [Author](https://bntvllnt.com)

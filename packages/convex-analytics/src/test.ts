@@ -41,4 +41,5 @@ export function register(
   );
 }
 
+/** `register`, plus the component `schema` and `modules` for calling `t.registerComponent` yourself. */
 export default { register, schema, modules };

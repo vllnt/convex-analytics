@@ -6,9 +6,8 @@
  * The backend core installs and runs with zero React — these hooks are an
  * opt-in `./react` entry; `react` is an optional peer dep.
  *
- * No-leak: aggregates ONLY (no raw events) and every call is scope-gated, so a
- * hook can never surface another scope's rows or a raw event payload on the
- * client.
+ * The hooks are typed for the aggregate return shapes only. Access control and
+ * the `scope` a query reads belong to the host query each hook is given.
  *
  * The component never owns the host's `api`. The host re-exports the analytics
  * query refs from its own Convex functions and passes the matching ref into
